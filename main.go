@@ -22,11 +22,36 @@ func main() {
 
 	watcher := newWatcher("/ft/services/", *socksProxy, strings.Split(*etcdPeers, ","))
 
+	tick := time.NewTicker(2 * time.Second)
+
 	for {
 		<-watcher.wait()
 		fmt.Println("something changed")
+
+		<-tick.C
+
+		newConf := buildVulcanConf()
+		if newConf != currentVulcanConf() {
+			setVulcanConf(newConf)
+		}
 	}
 
+}
+
+type vulcanConf struct {
+	// TODO
+}
+
+func buildVulcanConf() vulcanConf {
+	panic("implement me")
+}
+
+func currentVulcanConf() vulcanConf {
+	panic("implement me")
+}
+
+func setVulcanConf(vc vulcanConf) {
+	panic("implement me")
 }
 
 func newWatcher(path string, socksProxy string, etcdPeers []string) watcher {
