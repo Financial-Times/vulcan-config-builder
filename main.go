@@ -30,7 +30,7 @@ func main() {
 }
 
 func newWatcher(path string, socksProxy string, etcdPeers []string) watcher {
-	w := watcher{make(chan struct{})}
+	w := watcher{make(chan struct{}, 1)}
 
 	go func() {
 		transport := client.DefaultTransport
@@ -60,7 +60,10 @@ func newWatcher(path string, socksProxy string, etcdPeers []string) watcher {
 				log.Printf("watch failed %v, sleeping for 1s\n", err.Error())
 				time.Sleep(1 * time.Second)
 			} else {
-				w.ch <- struct{}{}
+				select {
+				case w.ch <- struct{}{}:
+				default:
+				}
 			}
 		}
 	}()
