@@ -50,8 +50,8 @@ func main() {
 
 		<-tick.C
 
-		newConf := buildVulcanConf()
-		if newConf != currentVulcanConf() {
+		newConf := buildVulcanConf(readServices(etcd))
+		if newConf != currentVulcanConf(etcd) {
 			setVulcanConf(newConf)
 		}
 	}
@@ -69,7 +69,8 @@ type Service struct {
 	Addresses      []ServiceAddress
 }
 
-func readServices() []Service {
+func readServices(etcd client.Client) []Service {
+	panic("implement me")
 }
 
 type vulcanConf struct {
@@ -80,7 +81,7 @@ func buildVulcanConf(services []Service) vulcanConf {
 	panic("implement me")
 }
 
-func currentVulcanConf() vulcanConf {
+func currentVulcanConf(etcd client.Client) vulcanConf {
 	panic("implement me")
 }
 
