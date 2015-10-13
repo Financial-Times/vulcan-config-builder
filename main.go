@@ -20,7 +20,27 @@ func main() {
 
 	flag.Parse()
 
-	watcher := newWatcher("/ft/services/", *socksProxy, strings.Split(*etcdPeers, ","))
+	transport := client.DefaultTransport
+
+	if *socksProxy != "" {
+		dialer, _ := proxy.SOCKS5("tcp", *socksProxy, nil, proxy.Direct)
+		transport = &http.Transport{Dial: dialer.Dial}
+	}
+
+	peers := strings.Split(*etcdPeers, ",")
+
+	cfg := client.Config{
+		Endpoints:               peers,
+		Transport:               transport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+
+	etcd, err := client.New(cfg)
+	if err != nil {
+		log.Fatal("failed to start etcd client: %v\n", err.Error())
+	}
+
+	watcher := newWatcher(etcd, "/ft/services/", *socksProxy, peers)
 
 	tick := time.NewTicker(2 * time.Second)
 
@@ -54,27 +74,10 @@ func setVulcanConf(vc vulcanConf) {
 	panic("implement me")
 }
 
-func newWatcher(path string, socksProxy string, etcdPeers []string) watcher {
+func newWatcher(etcd client.Client, path string, socksProxy string, etcdPeers []string) watcher {
 	w := watcher{make(chan struct{}, 1)}
 
 	go func() {
-		transport := client.DefaultTransport
-
-		if socksProxy != "" {
-			dialer, _ := proxy.SOCKS5("tcp", socksProxy, nil, proxy.Direct)
-			transport = &http.Transport{Dial: dialer.Dial}
-		}
-
-		cfg := client.Config{
-			Endpoints:               etcdPeers,
-			Transport:               transport,
-			HeaderTimeoutPerRequest: time.Second,
-		}
-
-		etcd, err := client.New(cfg)
-		if err != nil {
-			log.Fatal("failed to start etcd client: %v\n", err.Error())
-		}
 
 		kapi := client.NewKeysAPI(etcd)
 		watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
