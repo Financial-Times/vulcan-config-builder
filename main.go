@@ -42,7 +42,9 @@ func main() {
 		log.Fatal("failed to start etcd client: %v\n", err.Error())
 	}
 
-	watcher := newWatcher(etcd, "/ft/services/", *socksProxy, peers)
+	kapi := client.NewKeysAPI(etcd)
+
+	watcher := newWatcher(kapi, "/ft/services/", *socksProxy, peers)
 
 	tick := time.NewTicker(2 * time.Second)
 
@@ -52,8 +54,8 @@ func main() {
 
 		<-tick.C
 
-		newConf := buildVulcanConf(readServices(etcd))
-		if newConf != currentVulcanConf(etcd) {
+		newConf := buildVulcanConf(readServices(kapi))
+		if newConf != currentVulcanConf(kapi) {
 			setVulcanConf(newConf)
 		}
 	}
@@ -72,8 +74,7 @@ type Service struct {
 	PathPrefixes   []string
 }
 
-func readServices(etcd client.Client) []Service {
-	kapi := client.NewKeysAPI(etcd)
+func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
 		panic("failed to read from etcd")
@@ -125,23 +126,25 @@ type vulcanConf struct {
 }
 
 func buildVulcanConf(services []Service) vulcanConf {
-	panic("implement me")
+	fmt.Printf("services: %v\n", services)
+	println("TODO: IMPLEMENT ME")
+	return vulcanConf{}
 }
 
-func currentVulcanConf(etcd client.Client) vulcanConf {
-	panic("implement me")
+func currentVulcanConf(kapi client.KeysAPI) vulcanConf {
+	println("TODO: IMPLEMENT ME")
+	return vulcanConf{}
 }
 
 func setVulcanConf(vc vulcanConf) {
-	panic("implement me")
+	println("TODO: IMPLEMENT ME")
 }
 
-func newWatcher(etcd client.Client, path string, socksProxy string, etcdPeers []string) watcher {
+func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) watcher {
 	w := watcher{make(chan struct{}, 1)}
 
 	go func() {
 
-		kapi := client.NewKeysAPI(etcd)
 		watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
 
 		for {
