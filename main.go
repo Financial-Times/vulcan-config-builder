@@ -58,11 +58,25 @@ func main() {
 
 }
 
+type ServiceAddress struct {
+	Host string
+	Port int
+}
+
+type Service struct {
+	Name           string
+	HasHealthCheck bool
+	Addresses      []ServiceAddress
+}
+
+func readServices() []Service {
+}
+
 type vulcanConf struct {
 	// TODO
 }
 
-func buildVulcanConf() vulcanConf {
+func buildVulcanConf(services []Service) vulcanConf {
 	panic("implement me")
 }
 
