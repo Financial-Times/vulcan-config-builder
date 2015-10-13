@@ -8,6 +8,8 @@ import (
 	"golang.org/x/net/proxy"
 	"log"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -67,10 +69,53 @@ type Service struct {
 	Name           string
 	HasHealthCheck bool
 	Addresses      []ServiceAddress
+	//TODO: prefixes
 }
 
 func readServices(etcd client.Client) []Service {
-	panic("implement me")
+	kapi := client.NewKeysAPI(etcd)
+	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
+	if err != nil {
+		panic("failed to read from etcd")
+	}
+	if !resp.Node.Dir {
+		panic(fmt.Sprintf("%v is not a directory", resp.Node.Key))
+	}
+
+	var services []Service
+
+	for _, node := range resp.Node.Nodes {
+		if !node.Dir {
+			log.Printf("skipping non-directory %v\n", node.Key)
+			continue
+		}
+		service := Service{Name: filepath.Base(node.Key)}
+		for _, child := range node.Nodes {
+			switch filepath.Base(child.Key) {
+			case "healthcheck":
+				service.HasHealthCheck = child.Value == "true"
+			case "servers":
+				for _, server := range child.Nodes {
+					hostPort := strings.Split(server.Value, ":")
+					if len(hostPort) != 2 {
+						log.Printf("can't parse host and port from %v, skipping\n", server.Value)
+						continue
+					}
+					port, err := strconv.Atoi(hostPort[1])
+					if err != nil {
+						log.Printf("can't parse port from %v, skipping\n", hostPort[1])
+						continue
+					}
+					sa := ServiceAddress{Host: hostPort[0], Port: port}
+					service.Addresses = append(service.Addresses, sa)
+				}
+			default:
+				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
+			}
+		}
+		services = append(services, service)
+	}
+	return services
 }
 
 type vulcanConf struct {
