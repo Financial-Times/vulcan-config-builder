@@ -69,7 +69,7 @@ type Service struct {
 	Name           string
 	HasHealthCheck bool
 	Addresses      []ServiceAddress
-	//TODO: prefixes
+	PathPrefixes   []string
 }
 
 func readServices(etcd client.Client) []Service {
@@ -109,6 +109,8 @@ func readServices(etcd client.Client) []Service {
 					sa := ServiceAddress{Host: hostPort[0], Port: port}
 					service.Addresses = append(service.Addresses, sa)
 				}
+			case "path-prefixes":
+				service.PathPrefixes = strings.Split(child.Value, ",")
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
