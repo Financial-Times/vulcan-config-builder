@@ -30,6 +30,7 @@ func main() {
 	}
 
 	peers := strings.Split(*etcdPeers, ",")
+	log.Printf("etcd peers are %v\n", peers)
 
 	cfg := client.Config{
 		Endpoints:               peers,
