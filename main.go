@@ -74,6 +74,9 @@ type Service struct {
 func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
+		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
+			return []Service{}
+		}
 		log.Panicf("failed to read from etcd: %v\n", err.Error())
 	}
 	if !resp.Node.Dir {
