@@ -212,7 +212,7 @@ func buildVulcanConf(services []Service) vulcanConf {
 				Type:     "rewrite",
 				Priority: 1,
 				Middleware: vulcanRewriteMw{
-					Regexp:      fmt.Sprintf("/__%s/(.*)", service.Name),
+					Regexp:      fmt.Sprintf("/__%s(/.*)", service.Name),
 					Replacement: "$1",
 				},
 			},

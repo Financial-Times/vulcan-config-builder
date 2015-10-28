@@ -111,7 +111,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 					Type:     "rewrite",
 					Priority: 1,
 					Middleware: vulcanRewriteMw{
-						Regexp:      "/__service-a/(.*)",
+						Regexp:      "/__service-a(/.*)",
 						Replacement: "$1",
 					},
 				},
