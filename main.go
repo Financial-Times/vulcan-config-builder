@@ -252,20 +252,35 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 
 	// add or modify backends
 	for k, v := range newConf {
-		oldVal := existing[k]
-		if v != oldVal {
-			log.Printf("setting backend %s to %s\n", k, v)
-			if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
-				log.Printf("error setting %s to %s\n", k, v)
+		if strings.HasPrefix(k, "/vulcand/backends") {
+			oldVal := existing[k]
+			if v != oldVal {
+				log.Printf("setting backend %s to %s\n", k, v)
+				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
+					log.Printf("error setting %s to %s\n", k, v)
+				}
 			}
 		}
 	}
 
 	// add or modify frontends
 	for k, v := range newConf {
+		if strings.HasPrefix(k, "/vulcand/frontends") && !strings.HasSuffix(k, "/middlewares/rewrite") {
+			oldVal := existing[k]
+			if v != oldVal {
+				log.Printf("setting frontend %s to %s\n", k, v)
+				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
+					log.Printf("error setting %s to %s\n", k, v)
+				}
+			}
+		}
+	}
+
+	// add or modify everything else
+	for k, v := range newConf {
 		oldVal := existing[k]
 		if v != oldVal {
-			log.Printf("setting frontend %s to %s\n", k, v)
+			log.Printf("setting %s to %s\n", k, v)
 			if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 				log.Printf("error setting %s to %s\n", k, v)
 			}
