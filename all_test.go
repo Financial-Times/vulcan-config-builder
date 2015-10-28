@@ -102,6 +102,20 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
 				Type:      "http",
 			},
+			"vcb-internal-service-a": vulcanFrontend{
+				BackendID: "vcb-service-a",
+				Route:     "PathRegexp(`/__service-a/.*`)",
+				Type:      "http",
+				rewrite: vulcanRewrite{
+					Id:       "rewrite",
+					Type:     "rewrite",
+					Priority: 1,
+					Middleware: vulcanRewriteMw{
+						Regexp:      "/__service-a/(.*)",
+						Replacement: "$1",
+					},
+				},
+			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
 				BackendID: "vcb-service-a-srv1",
 				Route:     "Path(`/health/service-a-srv1/__health`)",

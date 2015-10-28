@@ -201,6 +201,23 @@ func buildVulcanConf(services []Service) vulcanConf {
 			}
 		}
 
+		// internal frontend
+		internalFrontEndName := fmt.Sprintf("vcb-internal-%s", service.Name)
+		vc.FrontEnds[internalFrontEndName] = vulcanFrontend{
+			Type:      "http",
+			BackendID: backendName,
+			Route:     fmt.Sprintf("PathRegexp(`/__%s/.*`)", service.Name),
+			rewrite: vulcanRewrite{
+				Id:       "rewrite",
+				Type:     "rewrite",
+				Priority: 1,
+				Middleware: vulcanRewriteMw{
+					Regexp:      fmt.Sprintf("/__%s/(.*)", service.Name),
+					Replacement: "$1",
+				},
+			},
+		}
+
 		// public path front ends
 		for pathName, pathRegex := range service.PathPrefixes {
 			vc.FrontEnds[fmt.Sprintf("vcb-%s-path-regex-%s", service.Name, pathName)] = vulcanFrontend{
