@@ -169,30 +169,36 @@ func buildVulcanConf(services []Service) vulcanConf {
 			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
 		}
 
-		// instance backends & health front ends
+		// instance backends
 		for svrID, sa := range service.Addresses {
 			instanceBackend := vulcanBackend{Servers: make(map[string]vulcanServer)}
 			instanceBackend.Servers[svrID] = vulcanServer{sa}
 			backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 			vc.Backends[backendName] = instanceBackend
+		}
 
-			frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.Name, svrID)
+		// health check front ends
+		if service.HasHealthCheck {
+			for svrID, _ := range service.Addresses {
+				frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.Name, svrID)
+				backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 
-			vc.FrontEnds[frontEndName] = vulcanFrontend{
-				Type:      "http",
-				BackendID: backendName,
-				Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.Name, svrID),
-				rewrite: vulcanRewrite{
-					Id:       "rewrite",
-					Type:     "rewrite",
-					Priority: 1,
-					Middleware: vulcanRewriteMw{
-						Regexp:      fmt.Sprintf("/health/%s-%s(.*)", service.Name, svrID),
-						Replacement: "$1",
+				vc.FrontEnds[frontEndName] = vulcanFrontend{
+					Type:      "http",
+					BackendID: backendName,
+					Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.Name, svrID),
+					rewrite: vulcanRewrite{
+						Id:       "rewrite",
+						Type:     "rewrite",
+						Priority: 1,
+						Middleware: vulcanRewriteMw{
+							Regexp:      fmt.Sprintf("/health/%s-%s(.*)", service.Name, svrID),
+							Replacement: "$1",
+						},
 					},
-				},
-			}
+				}
 
+			}
 		}
 
 		// public path front ends
