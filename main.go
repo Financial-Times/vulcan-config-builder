@@ -51,11 +51,13 @@ func main() {
 
 	for {
 		<-watcher.wait()
-		fmt.Println("something changed")
 
 		<-tick.C
 
+		s := time.Now()
+		log.Println("rebuilding configuration")
 		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
+		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 	}
 
 }
