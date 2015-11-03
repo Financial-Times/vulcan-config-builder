@@ -317,6 +317,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 
 	// some cleanup of known possible empty directories
 	cleanFrontends(kapi)
+	cleanBackends(kapi)
 }
 
 func cleanFrontends(kapi client.KeysAPI) {
@@ -330,6 +331,7 @@ func cleanFrontends(kapi client.KeysAPI) {
 	}
 	if !resp.Node.Dir {
 		log.Printf("/vulcand/frontends is not a directory.")
+		return
 	}
 	for _, fe := range resp.Node.Nodes {
 		feHasContent := false
@@ -346,6 +348,40 @@ func cleanFrontends(kapi client.KeysAPI) {
 			_, err := kapi.Delete(context.Background(), fe.Key, &client.DeleteOptions{Recursive: true})
 			if err != nil {
 				log.Printf("failed to remove unwanted frontend %v\n", fe.Key)
+			}
+		}
+	}
+
+}
+
+func cleanBackends(kapi client.KeysAPI) {
+
+	resp, err := kapi.Get(context.Background(), "/vulcand/backends/", &client.GetOptions{Recursive: true})
+	if err != nil {
+		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
+			return
+		}
+		panic(err)
+	}
+	if !resp.Node.Dir {
+		log.Printf("/vulcand/backends is not a directory.")
+		return
+	}
+	for _, be := range resp.Node.Nodes {
+		beHasContent := false
+		if be.Dir {
+			for _, child := range be.Nodes {
+				// anything apart from an empty "servers" dir means this is needed.
+				if filepath.Base(child.Key) != "servers" || len(child.Nodes) > 0 {
+					beHasContent = true
+					break
+				}
+			}
+		}
+		if !beHasContent {
+			_, err := kapi.Delete(context.Background(), be.Key, &client.DeleteOptions{Recursive: true})
+			if err != nil {
+				log.Printf("failed to remove unwanted backend %v\n", be.Key)
 			}
 		}
 	}
