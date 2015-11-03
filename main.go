@@ -49,6 +49,9 @@ func main() {
 
 	tick := time.NewTicker(2 * time.Second)
 
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
@@ -56,7 +59,12 @@ func main() {
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
-		<-watcher.wait()
+		select {
+		case <-c:
+			log.Println("exiting")
+			return
+		case <-watcher.wait():
+		}
 
 		// throttle
 		<-tick.C
