@@ -314,6 +314,42 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 			}
 		}
 	}
+
+	// some cleanup of known possible empty directories
+	cleanFrontends(kapi)
+}
+
+func cleanFrontends(kapi client.KeysAPI) {
+
+	resp, err := kapi.Get(context.Background(), "/vulcand/frontends/", &client.GetOptions{Recursive: true})
+	if err != nil {
+		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
+			return
+		}
+		panic(err)
+	}
+	if !resp.Node.Dir {
+		log.Printf("/vulcand/frontends is not a directory.")
+	}
+	for _, fe := range resp.Node.Nodes {
+		feHasContent := false
+		if fe.Dir {
+			for _, child := range fe.Nodes {
+				// anything apart from an empty "middlewares" dir means this is needed.
+				if filepath.Base(child.Key) != "middlewares" || len(child.Nodes) > 0 {
+					feHasContent = true
+					break
+				}
+			}
+		}
+		if !feHasContent {
+			_, err := kapi.Delete(context.Background(), fe.Key, &client.DeleteOptions{Recursive: true})
+			if err != nil {
+				log.Printf("failed to remove unwanted frontend %v\n", fe.Key)
+			}
+		}
+	}
+
 }
 
 func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
