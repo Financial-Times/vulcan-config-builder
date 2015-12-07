@@ -453,7 +453,7 @@ func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers [
 				} else if err == context.DeadlineExceeded {
 					log.Println("deadline exceeded error")
 				} else if cerr, ok := err.(*client.ClusterError); ok {
-					log.Printf("cluster error. Details:\n%v\n", cerr.Detail())
+					log.Printf("cluster error. Details: %v\n", cerr.Detail())
 				} else {
 					// bad cluster endpoints, which are not etcd servers
 					log.Println(err.Error())
