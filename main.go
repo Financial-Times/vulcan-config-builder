@@ -37,7 +37,7 @@ func main() {
 	cfg := client.Config{
 		Endpoints:               peers,
 		Transport:               transport,
-		HeaderTimeoutPerRequest: time.Second,
+		HeaderTimeoutPerRequest: 5 * time.Second,
 	}
 
 	etcd, err := client.New(cfg)
