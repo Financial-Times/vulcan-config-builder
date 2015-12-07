@@ -458,13 +458,12 @@ func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers [
 					// bad cluster endpoints, which are not etcd servers
 					log.Println(err.Error())
 				}
-				log.Println("sleeping for 1s due to previous error")
-				time.Sleep(1 * time.Second)
-			} else {
-				select {
-				case w.ch <- struct{}{}:
-				default:
-				}
+				log.Println("sleeping for 15s before rebuilding config due to error")
+				time.Sleep(15 * time.Second)
+			}
+			select {
+			case w.ch <- struct{}{}:
+			default:
 			}
 		}
 	}()
