@@ -47,7 +47,7 @@ func main() {
 
 	kapi := client.NewKeysAPI(etcd)
 
-	watcher := newWatcher(kapi, "/ft/services/", *socksProxy, peers)
+	notifier := newNotifier(kapi, "/ft/services/", *socksProxy, peers)
 
 	tick := time.NewTicker(2 * time.Second)
 
@@ -65,7 +65,7 @@ func main() {
 		case <-c:
 			log.Println("exiting")
 			return
-		case <-watcher.wait():
+		case <-notifier.notify():
 		}
 
 		// throttle
@@ -438,8 +438,8 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) watcher {
-	w := watcher{make(chan struct{}, 1)}
+func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
+	w := notifier{make(chan struct{}, 1)}
 
 	go func() {
 
@@ -475,11 +475,11 @@ func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers [
 	return w
 }
 
-type watcher struct {
+type notifier struct {
 	ch chan struct{}
 }
 
-func (w *watcher) wait() <-chan struct{} {
+func (w *notifier) notify() <-chan struct{} {
 	return w.ch
 }
 
