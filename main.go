@@ -443,28 +443,32 @@ func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers [
 
 	go func() {
 
-		watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
-
 		for {
-			_, err := watcher.Next(context.Background())
-			if err != nil {
-				if err == context.Canceled {
-					log.Println("context cancelled error")
-				} else if err == context.DeadlineExceeded {
-					log.Println("deadline exceeded error")
-				} else if cerr, ok := err.(*client.ClusterError); ok {
-					log.Printf("cluster error. Details: %v\n", cerr.Detail())
-				} else {
-					// bad cluster endpoints, which are not etcd servers
-					log.Println(err.Error())
+			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
+
+			var err error
+
+			for err == nil {
+				_, err = watcher.Next(context.Background())
+				select {
+				case w.ch <- struct{}{}:
+				default:
 				}
-				log.Println("sleeping for 15s before rebuilding config due to error")
-				time.Sleep(15 * time.Second)
 			}
-			select {
-			case w.ch <- struct{}{}:
-			default:
+
+			if err == context.Canceled {
+				log.Println("context cancelled error")
+			} else if err == context.DeadlineExceeded {
+				log.Println("deadline exceeded error")
+			} else if cerr, ok := err.(*client.ClusterError); ok {
+				log.Printf("cluster error. Details: %v\n", cerr.Detail())
+			} else {
+				// bad cluster endpoints, which are not etcd servers
+				log.Println(err.Error())
 			}
+
+			log.Println("sleeping for 15s before rebuilding config due to error")
+			time.Sleep(15 * time.Second)
 		}
 	}()
 
