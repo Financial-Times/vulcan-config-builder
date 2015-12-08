@@ -37,7 +37,7 @@ func main() {
 	cfg := client.Config{
 		Endpoints:               peers,
 		Transport:               transport,
-		HeaderTimeoutPerRequest: time.Second,
+		HeaderTimeoutPerRequest: 5 * time.Second,
 	}
 
 	etcd, err := client.New(cfg)
@@ -47,7 +47,7 @@ func main() {
 
 	kapi := client.NewKeysAPI(etcd)
 
-	watcher := newWatcher(kapi, "/ft/services/", *socksProxy, peers)
+	notifier := newNotifier(kapi, "/ft/services/", *socksProxy, peers)
 
 	tick := time.NewTicker(2 * time.Second)
 
@@ -65,7 +65,7 @@ func main() {
 		case <-c:
 			log.Println("exiting")
 			return
-		case <-watcher.wait():
+		case <-notifier.notify():
 		}
 
 		// throttle
@@ -438,45 +438,48 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newWatcher(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) watcher {
-	w := watcher{make(chan struct{}, 1)}
+func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
+	w := notifier{make(chan struct{}, 1)}
 
 	go func() {
 
-		watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
-
 		for {
-			_, err := watcher.Next(context.Background())
-			if err != nil {
-				if err == context.Canceled {
-					log.Println("context cancelled error")
-				} else if err == context.DeadlineExceeded {
-					log.Println("deadline exceeded error")
-				} else if cerr, ok := err.(*client.ClusterError); ok {
-					log.Printf("cluster error. Details:\n%v\n", cerr.Detail())
-				} else {
-					// bad cluster endpoints, which are not etcd servers
-					log.Println(err.Error())
-				}
-				log.Println("sleeping for 1s due to previous error")
-				time.Sleep(1 * time.Second)
-			} else {
+			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
+
+			var err error
+
+			for err == nil {
+				_, err = watcher.Next(context.Background())
 				select {
 				case w.ch <- struct{}{}:
 				default:
 				}
 			}
+
+			if err == context.Canceled {
+				log.Println("context cancelled error")
+			} else if err == context.DeadlineExceeded {
+				log.Println("deadline exceeded error")
+			} else if cerr, ok := err.(*client.ClusterError); ok {
+				log.Printf("cluster error. Details: %v\n", cerr.Detail())
+			} else {
+				// bad cluster endpoints, which are not etcd servers
+				log.Println(err.Error())
+			}
+
+			log.Println("sleeping for 15s before rebuilding config due to error")
+			time.Sleep(15 * time.Second)
 		}
 	}()
 
 	return w
 }
 
-type watcher struct {
+type notifier struct {
 	ch chan struct{}
 }
 
-func (w *watcher) wait() <-chan struct{} {
+func (w *notifier) notify() <-chan struct{} {
 	return w.ch
 }
 
