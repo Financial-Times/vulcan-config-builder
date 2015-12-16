@@ -47,6 +47,7 @@ func TestReadServices(t *testing.T) {
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
+		NeedsAuthentication: false,
 	}
 
 	if !reflect.DeepEqual(a, smap["service-a"]) {
@@ -64,6 +65,7 @@ func TestReadServices(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
 		},
+		NeedsAuthentication: false,
 	}
 	if !reflect.DeepEqual(b, smap["service-b"]) {
 		t.Errorf("service does not match:\n%v\n%v\n", b, smap["service-b"])
@@ -79,9 +81,16 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
+		NeedsAuthentication: false,
 	}
 
-	vc := buildVulcanConf([]Service{a})
+	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kapi := client.NewKeysAPI(etcd)
+
+	vc := buildVulcanConf(kapi, []Service{a})
 
 	expected := vulcanConf{
 		Backends: map[string]vulcanBackend{
@@ -141,6 +150,8 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 				Type:      "http",
 			},
 		},
+		Username: "username",
+		Password: "password",
 	}
 
 	if !reflect.DeepEqual(expected, vc) {

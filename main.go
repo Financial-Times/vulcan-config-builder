@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"github.com/golang/go/src/pkg/strconv"
 )
 
 func main() {
@@ -57,7 +58,7 @@ func main() {
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
-		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
+		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
@@ -79,6 +80,7 @@ type Service struct {
 	HasHealthCheck bool
 	Addresses      map[string]string
 	PathPrefixes   map[string]string
+	NeedsAuthentication bool
 }
 
 func readServices(kapi client.KeysAPI) []Service {
@@ -104,6 +106,7 @@ func readServices(kapi client.KeysAPI) []Service {
 			Name:         filepath.Base(node.Key),
 			Addresses:    make(map[string]string),
 			PathPrefixes: make(map[string]string),
+			NeedsAuthentication: false,
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -117,6 +120,13 @@ func readServices(kapi client.KeysAPI) []Service {
 				for _, path := range child.Nodes {
 					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
 				}
+			case "auth":
+				for _, auth := range child.Nodes {
+					service.NeedsAuthentication, err = strconv.ParseBool(auth.Value)
+					if (err != nil) {
+						log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, auth.Value, err)
+					}
+				}
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
@@ -129,6 +139,8 @@ func readServices(kapi client.KeysAPI) []Service {
 type vulcanConf struct {
 	FrontEnds map[string]vulcanFrontend
 	Backends  map[string]vulcanBackend
+	Username  string
+	Password  string
 }
 
 type vulcanFrontend struct {
@@ -136,6 +148,7 @@ type vulcanFrontend struct {
 	Route     string
 	Type      string
 	rewrite   vulcanRewrite
+	Auth      bool
 }
 
 type vulcanRewrite struct {
@@ -158,10 +171,24 @@ type vulcanServer struct {
 	URL string
 }
 
-func buildVulcanConf(services []Service) vulcanConf {
+func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
+	username := ""
+	password := ""
+	usernameR, errU := kapi.Get(context.Background(), "/ft/config/vulcan/auth/username", nil)
+	passwordR, errP := kapi.Get(context.Background(), "/ft/config/vulcan/auth/password", nil)
+
+	if errU != nil || errP != nil || usernameR.Node.Dir || passwordR.Node.Dir {
+		log.Printf("error obtaining configured username password for authenticating in the cluster %v %v\n", errU, errP)
+	} else {
+		username = usernameR.Node.Value
+		password = passwordR.Node.Value
+	}
+
 	vc := vulcanConf{
 		Backends:  make(map[string]vulcanBackend),
 		FrontEnds: make(map[string]vulcanFrontend),
+		Username: username,
+		Password: password,
 	}
 
 	for _, service := range services {
@@ -180,6 +207,7 @@ func buildVulcanConf(services []Service) vulcanConf {
 			Type:      "http",
 			BackendID: backendName,
 			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
+			Auth: service.NeedsAuthentication,
 		}
 
 		// instance backends
@@ -209,6 +237,7 @@ func buildVulcanConf(services []Service) vulcanConf {
 							Replacement: "$1",
 						},
 					},
+					Auth: service.NeedsAuthentication,
 				}
 
 			}
@@ -431,6 +460,11 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 				be.rewrite.Middleware.Regexp,
 				be.rewrite.Middleware.Replacement,
 			)
+			m[k] = v
+		}
+		if be.Auth && vc.Username != "" && vc.Password != "" {
+			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/auth1", feName)
+			v := fmt.Sprintf("{\"Type\": \"auth\", \"Middleware\":{\"Username\": \"%s\", \"Password\": \"%s\"}}", vc.Username, vc.Password)
 			m[k] = v
 		}
 	}
