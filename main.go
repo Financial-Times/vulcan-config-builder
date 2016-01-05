@@ -174,8 +174,8 @@ type vulcanServer struct {
 func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 	username := ""
 	password := ""
-	usernameR, errU := kapi.Get(context.Background(), "/ft/config/vulcan/auth/username", nil)
-	passwordR, errP := kapi.Get(context.Background(), "/ft/config/vulcan/auth/password", nil)
+	usernameR, errU := kapi.Get(context.Background(), "/ft/_credentials/vulcand/username", nil)
+	passwordR, errP := kapi.Get(context.Background(), "/ft/_credentials/vulcand/password", nil)
 
 	if errU != nil || errP != nil || usernameR.Node.Dir || passwordR.Node.Dir {
 		log.Printf("error obtaining configured username password for authenticating in the cluster %v %v\n", errU, errP)
