@@ -121,11 +121,9 @@ func readServices(kapi client.KeysAPI) []Service {
 					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
 				}
 			case "auth":
-				for _, auth := range child.Nodes {
-					service.NeedsAuthentication, err = strconv.ParseBool(auth.Value)
-					if (err != nil) {
-						log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, auth.Value, err)
-					}
+				service.NeedsAuthentication, err = strconv.ParseBool(child.Value)
+				if (err != nil) {
+					log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
 				}
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
@@ -178,7 +176,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 	passwordR, errP := kapi.Get(context.Background(), "/ft/_credentials/vulcand/password", nil)
 
 	if errU != nil || errP != nil || usernameR.Node.Dir || passwordR.Node.Dir {
-		log.Printf("error obtaining configured username password for authenticating in the cluster %v %v\n", errU, errP)
+		log.Printf("WARN Couldn't find username or password to set for authentication: %v %v\n", errU, errP)
 	} else {
 		username = usernameR.Node.Value
 		password = passwordR.Node.Value
