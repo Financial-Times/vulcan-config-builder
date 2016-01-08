@@ -462,7 +462,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 		}
 		if be.Auth && vc.Username != "" && vc.Password != "" {
 			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/auth1", feName)
-			v := fmt.Sprintf("{\"Type\": \"auth\", \"Middleware\":{\"Username\": \"%s\", \"Password\": \"%s\"}}", vc.Username, vc.Password)
+			v := fmt.Sprintf("{\"Type\": \"sauth\", \"Middleware\":{\"Username\": \"%s\", \"Password\": \"%s\"}}", vc.Username, vc.Password)
 			m[k] = v
 		}
 	}
