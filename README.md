@@ -50,8 +50,6 @@ These routing rules will change as we develop. The idea is they are in a single 
 
 ## Test the app locally
 
-1. Install [__etcd__](https://github.com/coreos/etcd)
-2. `go get github.com/Financial-Times/vulcan-config-builder`
-3. `git clone https://github.com/Financial-Times/vulcan-config-builder.git && cd vulcan-config-builder`
-4. `go build`
-5. `go test`
+1. Install [__etcd__](https://github.com/coreos/etcd) and run.
+2. `go get github.com/Financial-Times/vulcan-config-builder && cd $GOPATH/src/github.com/Financial-Times/vulcan-config-builder`
+3. `go test`

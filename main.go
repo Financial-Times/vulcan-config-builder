@@ -122,7 +122,7 @@ func readServices(kapi client.KeysAPI) []Service {
 				}
 			case "auth":
 				service.NeedsAuthentication, err = strconv.ParseBool(child.Value)
-				if (err != nil) {
+				if err != nil {
 					log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
 				}
 			default:
