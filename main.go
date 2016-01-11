@@ -255,6 +255,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					Replacement: "$1",
 				},
 			},
+			Auth: service.NeedsAuthentication,
 		}
 
 		// public path front ends
