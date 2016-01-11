@@ -30,14 +30,15 @@ will result in
 # internal routing frontend
 /vulcand/frontends/vcb-internal-service-a/frontend            {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/__service-a/.*`)"}
 /vulcand/frontends/vcb-internal-service-a/middlewares/rewrite {"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/__service-a(/.*)", "Replacement":"$1"}}
-/vulcand/frontends/vcb-internal-service-a/middlewares/auth    {"Type": "auth", "Middleware":{"Username": "username", "Password": "password"}}
+/vulcand/frontends/vcb-internal-service-a/middlewares/auth    {"Type": "sauth", "Middleware":{"Username": "username", "Password": "password"}}
 
 # health check routing
 /vulcand/frontends/vcb-health-service-a-1/frontend             {"Type":"http", "BackendId":"vcb-service-a-1", "Route":"Path(`/health/service-a-1/__health`)"}
 /vulcand/frontends/vcb-health-service-a-1/middlewares/rewrite  {"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-1(.*)", "Replacement":"$1"}}
 
 # host header based routing
-/vulcand/frontends/vcb-byhostheader-service-a/frontend      {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/.*`) && Host(`service-a`)"}
+/vulcand/frontends/vcb-byhostheader-service-a/frontend         {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/.*`) && Host(`service-a`)"}
+/vulcand/frontends/vcb-byhostheader-service-a/middlewares/auth {"Type": "sauth", "Middleware":{"Username": "username", "Password": "password"}}
 
 # "public" routing
 /vulcand/frontends/vcb-service-a-path-regex-content/frontend {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/content/.*`)"}
