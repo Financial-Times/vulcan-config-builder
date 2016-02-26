@@ -6,14 +6,14 @@ Instead of configuring vulcand directly in etcd, this tool allows a more declara
 
 Example
 ```
-etcdctl set   /ft/services/service-a/healthcheck            true
-etcdctl set   /ft/services/service-a/servers/1             "http://host:5678" --ttl 600
-etcdctl set   /ft/services/service-a/path-regex/list       /lists/.*
-etcdctl set   /ft/services/service-a/path-regex/content    /content/.*
-etcdctl set   /ft/services/service-a/auth                  true
+etcdctl set   /ft/services/service-a/healthcheck      true
+etcdctl set   /ft/services/service-a/servers/1        "http://host:5678" --ttl 600
+etcdctl set   /ft/services/service-a/path-regex/foo   /foo/.*
+etcdctl set   /ft/services/service-a/path-regex/bar   /bar/.*
+etcdctl set   /ft/services/service-a/auth             true
 
-etcdctl set   /ft/_credentials/vulcand/username            username
-etcdctl set   /ft/_credentials/vulcand/password            password
+etcdctl set   /ft/_credentials/vulcand/username       username
+etcdctl set   /ft/_credentials/vulcand/password       password
 ```
 
 will result in
@@ -41,8 +41,8 @@ will result in
 /vulcand/frontends/vcb-byhostheader-service-a/middlewares/auth {"Type": "sauth", "Middleware":{"Username": "username", "Password": "password"}}
 
 # "public" routing
-/vulcand/frontends/vcb-service-a-path-regex-content/frontend {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/content/.*`)"}
-/vulcand/frontends/vcb-service-a-path-regex-list/frontend    {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/content/.*`)"}
+/vulcand/frontends/vcb-service-a-path-regex-foo/frontend  {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/foo/.*`)"}
+/vulcand/frontends/vcb-service-a-path-regex-bar/frontend  {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/bar/.*`)"}
 
 ```
 
