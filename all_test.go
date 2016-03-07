@@ -282,7 +282,7 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 				Type:      "http",
 			},
 		},
-		Credentials: "foo:bar",
+		Credentials: "foo:bar,xyz:zyx",
 	}
 
 	applyVulcanConf(kapi, vc)
@@ -298,7 +298,7 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type":"http"}`,
 		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:1"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":           "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\"}",
-		"/vulcand/frontends/vcb-byhostheader-service-a/middlewares/auth1":  `{"Type": "sauth", "Middleware":{"Credentials": "foo:bar"}}`,
+		"/vulcand/frontends/vcb-byhostheader-service-a/middlewares/auth1":  `{"Type": "sauth", "Middleware":{"Credentials": "foo:bar,xyz:zyx"}}`,
 		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\"}",
 		"/vulcand/frontends/vcb-health-service-a-srv1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-srv1(.*)", "Replacement":"$1"}}`,
 		"/vulcand/frontends/vcb-service-a-path-regex-bananas/frontend":     "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/bananas/.*`)\"}",
