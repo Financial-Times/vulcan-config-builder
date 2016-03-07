@@ -14,5 +14,5 @@ RUN apk add --update bash \
   && apk del go git \
   && rm -rf $GOPATH /var/cache/apk/*
 
-CMD ./vulcan-config-builder -etcd-peers=$ETCD_PEERS
+CMD exec ./vulcan-config-builder -etcd-peers=$ETCD_PEERS
 
