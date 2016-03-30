@@ -135,9 +135,8 @@ func readServices(kapi client.KeysAPI) []Service {
 }
 
 type vulcanConf struct {
-	FrontEnds   map[string]vulcanFrontend
-	Backends    map[string]vulcanBackend
-	Credentials string
+	FrontEnds map[string]vulcanFrontend
+	Backends  map[string]vulcanBackend
 }
 
 type vulcanFrontend struct {
@@ -169,19 +168,9 @@ type vulcanServer struct {
 }
 
 func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
-	credentials := ""
-	credentialsR, err := kapi.Get(context.Background(), "/ft/_credentials/internal-access", nil)
-
-	if err != nil || credentialsR.Node.Dir {
-		log.Printf("WARN Couldn't find credentials to set authentication: %v \n", err)
-	} else {
-		credentials = credentialsR.Node.Value
-	}
-
 	vc := vulcanConf{
-		Backends:    make(map[string]vulcanBackend),
-		FrontEnds:   make(map[string]vulcanFrontend),
-		Credentials: credentials,
+		Backends:  make(map[string]vulcanBackend),
+		FrontEnds: make(map[string]vulcanFrontend),
 	}
 
 	for _, service := range services {
@@ -453,11 +442,6 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 				be.rewrite.Middleware.Regexp,
 				be.rewrite.Middleware.Replacement,
 			)
-			m[k] = v
-		}
-		if be.Auth && vc.Credentials != "" {
-			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/auth1", feName)
-			v := fmt.Sprintf("{\"Type\": \"sauth\", \"Middleware\":{\"Credentials\": \"%s\"}}", vc.Credentials)
 			m[k] = v
 		}
 	}
