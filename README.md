@@ -11,9 +11,6 @@ etcdctl set   /ft/services/service-a/servers/1        "http://host:5678" --ttl 6
 etcdctl set   /ft/services/service-a/path-regex/foo   /foo/.*
 etcdctl set   /ft/services/service-a/path-regex/bar   /bar/.*
 etcdctl set   /ft/services/service-a/auth             true
-
-etcdctl set   /ft/_credentials/vulcand/username       username
-etcdctl set   /ft/_credentials/vulcand/password       password
 ```
 
 will result in
@@ -46,7 +43,6 @@ will result in
 
 ```
 
-Username and password should be set at `/ft/_credentials/vulcand/` like it was mentioned above, to be able to set for the marked services.
 These routing rules will change as we develop. The idea is they are in a single place in this application, not spread out across many unmaintainable sidekick services.
 
 ## Test the app locally
