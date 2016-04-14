@@ -80,7 +80,6 @@ type Service struct {
 	HasHealthCheck      bool
 	Addresses           map[string]string
 	PathPrefixes        map[string]string
-	NeedsAuthentication bool
 	Failover            bool
 }
 
@@ -107,7 +106,6 @@ func readServices(kapi client.KeysAPI) []Service {
 			Name:                filepath.Base(node.Key),
 			Addresses:           make(map[string]string),
 			PathPrefixes:        make(map[string]string),
-			NeedsAuthentication: false,
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -120,11 +118,6 @@ func readServices(kapi client.KeysAPI) []Service {
 			case "path-regex":
 				for _, path := range child.Nodes {
 					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
-				}
-			case "auth":
-				service.NeedsAuthentication, err = strconv.ParseBool(child.Value)
-				if err != nil {
-					log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
 				}
 			case "failover":
 				service.Failover, err = strconv.ParseBool(child.Value)
@@ -150,7 +143,6 @@ type vulcanFrontend struct {
 	Route     string
 	Type      string
 	rewrite   vulcanRewrite
-	Auth      bool
 	Failover  bool
 }
 
@@ -196,7 +188,6 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			Type:      "http",
 			BackendID: backendName,
 			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
-			Auth:      service.NeedsAuthentication,
 			Failover:  service.Failover,
 		}
 
@@ -247,7 +238,6 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					Replacement: "$1",
 				},
 			},
-			Auth:     service.NeedsAuthentication,
 			Failover: service.Failover,
 		}
 

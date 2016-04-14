@@ -28,7 +28,6 @@ func TestReadServices(t *testing.T) {
 		"/ft/services/service-b/servers/srv2":       "http://host2:2",
 		"/ft/services/service-b/path-regex/content": "/content/.*",
 		"/ft/services/service-b/path-regex/bananas": "/bananas/.*",
-		"/ft/services/service-b/auth":               "true",
 		"/ft/services/service-b/failover":           "true",
 	}); err != nil {
 		t.Error(err)
@@ -49,7 +48,6 @@ func TestReadServices(t *testing.T) {
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
-		NeedsAuthentication: false,
 		Failover:            false,
 	}
 
@@ -68,7 +66,6 @@ func TestReadServices(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
 		},
-		NeedsAuthentication: true,
 		Failover:            true,
 	}
 	if !reflect.DeepEqual(b, smap["service-b"]) {
@@ -85,7 +82,6 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
-		NeedsAuthentication: false,
 		Failover:            true,
 	}
 
@@ -254,7 +250,6 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 				BackendID: "vcb-service-a",
 				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
 				Type:      "http",
-				Auth:      true,
 			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
 				BackendID: "vcb-service-a-srv1",
@@ -336,7 +331,6 @@ func TestApplyVulcanConfigCreateWithFailover(t *testing.T) {
 				BackendID: "vcb-service-a",
 				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
 				Type:      "http",
-				Auth:      true,
 				Failover:  true,
 			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
@@ -500,7 +494,6 @@ func TestApplyVulcanConfigReplace(t *testing.T) {
 				BackendID: "vcb-service-a",
 				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
 				Type:      "http",
-				Auth:      true,
 			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
 				BackendID: "vcb-service-a-srv1",
@@ -547,7 +540,6 @@ func TestApplyVulcanConfigReplace(t *testing.T) {
 				BackendID: "vcb-service-a",
 				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
 				Type:      "http",
-				Auth:      true,
 			},
 			"vcb-health-service-a-s1": vulcanFrontend{
 				BackendID: "vcb-service-a-s1",
