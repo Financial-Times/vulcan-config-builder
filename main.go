@@ -81,6 +81,7 @@ type Service struct {
 	Addresses           map[string]string
 	PathPrefixes        map[string]string
 	NeedsAuthentication bool
+	Failover            bool
 }
 
 func readServices(kapi client.KeysAPI) []Service {
@@ -125,6 +126,11 @@ func readServices(kapi client.KeysAPI) []Service {
 				if err != nil {
 					log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
 				}
+			case "failover":
+				service.Failover, err = strconv.ParseBool(child.Value)
+				if err != nil {
+					log.Printf("Failover setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
+				}
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
@@ -145,10 +151,11 @@ type vulcanFrontend struct {
 	Type      string
 	rewrite   vulcanRewrite
 	Auth      bool
+	Failover  bool
 }
 
 type vulcanRewrite struct {
-	Id         string
+	ID         string
 	Type       string
 	Priority   int
 	Middleware vulcanRewriteMw
@@ -190,6 +197,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			BackendID: backendName,
 			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
 			Auth:      service.NeedsAuthentication,
+			Failover:  service.Failover,
 		}
 
 		// instance backends
@@ -202,7 +210,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 
 		// health check front ends
 		if service.HasHealthCheck {
-			for svrID, _ := range service.Addresses {
+			for svrID := range service.Addresses {
 				frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.Name, svrID)
 				backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 
@@ -211,7 +219,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					BackendID: backendName,
 					Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.Name, svrID),
 					rewrite: vulcanRewrite{
-						Id:       "rewrite",
+						ID:       "rewrite",
 						Type:     "rewrite",
 						Priority: 1,
 						Middleware: vulcanRewriteMw{
@@ -231,7 +239,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			BackendID: backendName,
 			Route:     fmt.Sprintf("PathRegexp(`/__%s/.*`)", service.Name),
 			rewrite: vulcanRewrite{
-				Id:       "rewrite",
+				ID:       "rewrite",
 				Type:     "rewrite",
 				Priority: 1,
 				Middleware: vulcanRewriteMw{
@@ -239,7 +247,8 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					Replacement: "$1",
 				},
 			},
-			Auth: service.NeedsAuthentication,
+			Auth:     service.NeedsAuthentication,
+			Failover: service.Failover,
 		}
 
 		// public path front ends
@@ -248,6 +257,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 				Type:      "http",
 				BackendID: backendName,
 				Route:     fmt.Sprintf("PathRegexp(`%s`)", pathRegex),
+				Failover:  service.Failover,
 			}
 		}
 	}
@@ -272,7 +282,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	}
 
 	// remove unwanted frontends
-	for k, _ := range existing {
+	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/frontends/vcb-") {
 			_, found := newConf[k]
 			if !found {
@@ -286,7 +296,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	}
 
 	// remove unwanted backends
-	for k, _ := range existing {
+	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/backends/vcb-") {
 			_, found := newConf[k]
 			if !found {
@@ -430,13 +440,16 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	for feName, be := range vc.FrontEnds {
 		k := fmt.Sprintf("/vulcand/frontends/%s/frontend", feName)
 		v := fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s"}`, be.Type, be.BackendID, be.Route)
+		if be.Failover {
+			v = fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s", "Settings": {"FailoverPredicate":"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1"}}`, be.Type, be.BackendID, be.Route)
+		}
 		m[k] = v
-		if be.rewrite.Id != "" {
+		if be.rewrite.ID != "" {
 			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/rewrite", feName)
 			v := fmt.Sprintf(
 
 				`{"Id":"%s", "Type":"%s", "Priority":%d, "Middleware": {"Regexp":"%s", "Replacement":"%s"}}`,
-				be.rewrite.Id,
+				be.rewrite.ID,
 				be.rewrite.Type,
 				be.rewrite.Priority,
 				be.rewrite.Middleware.Regexp,
