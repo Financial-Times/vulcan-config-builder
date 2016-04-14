@@ -76,11 +76,11 @@ func main() {
 }
 
 type Service struct {
-	Name                string
-	HasHealthCheck      bool
-	Addresses           map[string]string
-	PathPrefixes        map[string]string
-	Failover            bool
+	Name           string
+	HasHealthCheck bool
+	Addresses      map[string]string
+	PathPrefixes   map[string]string
+	Failover       bool
 }
 
 func readServices(kapi client.KeysAPI) []Service {
@@ -103,9 +103,9 @@ func readServices(kapi client.KeysAPI) []Service {
 			continue
 		}
 		service := Service{
-			Name:                filepath.Base(node.Key),
-			Addresses:           make(map[string]string),
-			PathPrefixes:        make(map[string]string),
+			Name:         filepath.Base(node.Key),
+			Addresses:    make(map[string]string),
+			PathPrefixes: make(map[string]string),
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
