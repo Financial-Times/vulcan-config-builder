@@ -28,7 +28,7 @@ func TestReadServices(t *testing.T) {
 		"/ft/services/service-b/servers/srv2":       "http://host2:2",
 		"/ft/services/service-b/path-regex/content": "/content/.*",
 		"/ft/services/service-b/path-regex/bananas": "/bananas/.*",
-		"/ft/services/service-b/failover":           "true",
+		"/ft/services/service-b/failover-predicate": "IsNetworkError()",
 	}); err != nil {
 		t.Error(err)
 	}
@@ -48,7 +48,7 @@ func TestReadServices(t *testing.T) {
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
-		Failover: false,
+		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
 
 	if !reflect.DeepEqual(a, smap["service-a"]) {
@@ -66,7 +66,7 @@ func TestReadServices(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
 		},
-		Failover: true,
+		FailoverPredicate: "IsNetworkError()",
 	}
 	if !reflect.DeepEqual(b, smap["service-b"]) {
 		t.Errorf("service does not match:\n%v\n%v\n", b, smap["service-b"])
@@ -82,7 +82,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
-		Failover: true,
+		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
 
 	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
@@ -108,10 +108,10 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 		},
 		FrontEnds: map[string]vulcanFrontend{
 			"vcb-byhostheader-service-a": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
-				Type:      "http",
-				Failover:  true,
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/.*`) && Host(`service-a`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 			"vcb-internal-service-a": vulcanFrontend{
 				BackendID: "vcb-service-a",
@@ -126,7 +126,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 						Replacement: "$1",
 					},
 				},
-				Failover: true,
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
 				BackendID: "vcb-service-a-srv1",
@@ -141,18 +141,19 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 						Replacement: "$1",
 					},
 				},
+				FailoverPredicate: "",
 			},
 			"vcb-service-a-path-regex-bananas": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/bananas/.*`)",
-				Type:      "http",
-				Failover:  true,
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/bananas/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 			"vcb-service-a-path-regex-cheese": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/cheese/.*`)",
-				Type:      "http",
-				Failover:  true,
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/cheese/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 		},
 	}
@@ -247,9 +248,10 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 		},
 		FrontEnds: map[string]vulcanFrontend{
 			"vcb-byhostheader-service-a": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
-				Type:      "http",
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/.*`) && Host(`service-a`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 			"vcb-health-service-a-srv1": vulcanFrontend{
 				BackendID: "vcb-service-a-srv1",
@@ -266,98 +268,16 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 				},
 			},
 			"vcb-service-a-path-regex-bananas": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/bananas/.*`)",
-				Type:      "http",
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/bananas/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 			"vcb-service-a-path-regex-toast": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/toast/.*`)",
-				Type:      "http",
-			},
-		},
-	}
-
-	applyVulcanConf(kapi, vc)
-
-	values, err := readAllKeysFromEtcd(kapi, "/vulcand/")
-	if err != nil {
-		t.Error(err)
-	}
-
-	expected := map[string]string{
-		"/vulcand/backends/vcb-service-a/backend":                          `{"Type":"http"}`,
-		"/vulcand/backends/vcb-service-a/servers/srv1":                     `{"url":"http://host1:1"}`,
-		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type":"http"}`,
-		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:1"}`,
-		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":           "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\"}",
-		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\"}",
-		"/vulcand/frontends/vcb-health-service-a-srv1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-srv1(.*)", "Replacement":"$1"}}`,
-		"/vulcand/frontends/vcb-service-a-path-regex-bananas/frontend":     "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/bananas/.*`)\"}",
-		"/vulcand/frontends/vcb-service-a-path-regex-toast/frontend":       "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast/.*`)\"}",
-	}
-
-	if !reflect.DeepEqual(expected, values) {
-		t.Errorf("fail. expected and actual are \n%v\n%v\n", expected, values)
-	}
-}
-
-func TestApplyVulcanConfigCreateWithFailover(t *testing.T) {
-	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kapi := client.NewKeysAPI(etcd)
-
-	if err := deleteRecursiveIfExists(kapi, "/vulcand/"); err != nil {
-		t.Error(err)
-	}
-
-	vc := vulcanConf{
-		Backends: map[string]vulcanBackend{
-			"vcb-service-a": vulcanBackend{
-				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
-				},
-			},
-			"vcb-service-a-srv1": vulcanBackend{
-				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
-				},
-			},
-		},
-		FrontEnds: map[string]vulcanFrontend{
-			"vcb-byhostheader-service-a": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/.*`) && Host(`service-a`)",
-				Type:      "http",
-				Failover:  true,
-			},
-			"vcb-health-service-a-srv1": vulcanFrontend{
-				BackendID: "vcb-service-a-srv1",
-				Route:     "Path(`/health/service-a-srv1/__health`)",
-				Type:      "http",
-				rewrite: vulcanRewrite{
-					ID:       "rewrite",
-					Type:     "rewrite",
-					Priority: 1,
-					Middleware: vulcanRewriteMw{
-						Regexp:      "/health/service-a-srv1(.*)",
-						Replacement: "$1",
-					},
-				},
-			},
-			"vcb-service-a-path-regex-bananas": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/bananas/.*`)",
-				Type:      "http",
-				Failover:  true,
-			},
-			"vcb-service-a-path-regex-toast": vulcanFrontend{
-				BackendID: "vcb-service-a",
-				Route:     "PathRegexp(`/toast/.*`)",
-				Type:      "http",
-				Failover:  true,
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/toast/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
 		},
 	}
@@ -375,7 +295,7 @@ func TestApplyVulcanConfigCreateWithFailover(t *testing.T) {
 		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type":"http"}`,
 		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:1"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":           "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1\"}}",
-		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\"}",
+		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-srv1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-srv1(.*)", "Replacement":"$1"}}`,
 		"/vulcand/frontends/vcb-service-a-path-regex-bananas/frontend":     "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/bananas/.*`)\", \"Settings\": {\"FailoverPredicate\":\"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1\"}}",
 		"/vulcand/frontends/vcb-service-a-path-regex-toast/frontend":       "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast/.*`)\", \"Settings\": {\"FailoverPredicate\":\"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1\"}}",
@@ -454,10 +374,10 @@ func TestApplyVulcanConfigReplaceIdentical(t *testing.T) {
 		"/vulcand/backends/vcb-service-a/servers/s1":                     `{"url":"http://hostz:1"}`,
 		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type":"http"}`,
 		"/vulcand/backends/vcb-service-a-s1/servers/s1":                  `{"url":"http://hostz:1"}`,
-		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\"}",
-		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\"}",
+		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
+		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-s1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-s1(.*)", "Replacement":"$1"}}`,
-		"/vulcand/frontends/vcb-service-a-path-regex-toast1/frontend":    "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast1/.*`)\"}",
+		"/vulcand/frontends/vcb-service-a-path-regex-toast1/frontend":    "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast1/.*`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 	}
 
 	if !reflect.DeepEqual(expected, values) {
@@ -573,10 +493,10 @@ func TestApplyVulcanConfigReplace(t *testing.T) {
 		"/vulcand/backends/vcb-service-a/servers/s1":                     `{"url":"http://hostz:1"}`,
 		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type":"http"}`,
 		"/vulcand/backends/vcb-service-a-s1/servers/s1":                  `{"url":"http://hostz:1"}`,
-		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\"}",
-		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\"}",
+		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
+		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-s1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-s1(.*)", "Replacement":"$1"}}`,
-		"/vulcand/frontends/vcb-service-a-path-regex-toast1/frontend":    "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast1/.*`)\"}",
+		"/vulcand/frontends/vcb-service-a-path-regex-toast1/frontend":    "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/toast1/.*`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 	}
 
 	if !reflect.DeepEqual(expected, values) {

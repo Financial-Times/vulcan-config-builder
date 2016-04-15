@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
-	"github.com/golang/go/src/pkg/strconv"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 	"log"
@@ -76,11 +75,11 @@ func main() {
 }
 
 type Service struct {
-	Name           string
-	HasHealthCheck bool
-	Addresses      map[string]string
-	PathPrefixes   map[string]string
-	Failover       bool
+	Name              string
+	HasHealthCheck    bool
+	Addresses         map[string]string
+	PathPrefixes      map[string]string
+	FailoverPredicate string
 }
 
 func readServices(kapi client.KeysAPI) []Service {
@@ -103,9 +102,10 @@ func readServices(kapi client.KeysAPI) []Service {
 			continue
 		}
 		service := Service{
-			Name:         filepath.Base(node.Key),
-			Addresses:    make(map[string]string),
-			PathPrefixes: make(map[string]string),
+			Name:              filepath.Base(node.Key),
+			Addresses:         make(map[string]string),
+			PathPrefixes:      make(map[string]string),
+			FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -119,11 +119,8 @@ func readServices(kapi client.KeysAPI) []Service {
 				for _, path := range child.Nodes {
 					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
 				}
-			case "failover":
-				service.Failover, err = strconv.ParseBool(child.Value)
-				if err != nil {
-					log.Printf("Failover setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
-				}
+			case "failover-predicate":
+				service.FailoverPredicate = child.Value
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
@@ -139,11 +136,11 @@ type vulcanConf struct {
 }
 
 type vulcanFrontend struct {
-	BackendID string
-	Route     string
-	Type      string
-	rewrite   vulcanRewrite
-	Failover  bool
+	BackendID         string
+	Route             string
+	Type              string
+	rewrite           vulcanRewrite
+	FailoverPredicate string
 }
 
 type vulcanRewrite struct {
@@ -185,10 +182,10 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 		// Host header front end
 		frontEndName := fmt.Sprintf("vcb-byhostheader-%s", service.Name)
 		vc.FrontEnds[frontEndName] = vulcanFrontend{
-			Type:      "http",
-			BackendID: backendName,
-			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
-			Failover:  service.Failover,
+			Type:              "http",
+			BackendID:         backendName,
+			Route:             fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
+			FailoverPredicate: service.FailoverPredicate,
 		}
 
 		// instance backends
@@ -238,16 +235,16 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					Replacement: "$1",
 				},
 			},
-			Failover: service.Failover,
+			FailoverPredicate: service.FailoverPredicate,
 		}
 
 		// public path front ends
 		for pathName, pathRegex := range service.PathPrefixes {
 			vc.FrontEnds[fmt.Sprintf("vcb-%s-path-regex-%s", service.Name, pathName)] = vulcanFrontend{
-				Type:      "http",
-				BackendID: backendName,
-				Route:     fmt.Sprintf("PathRegexp(`%s`)", pathRegex),
-				Failover:  service.Failover,
+				Type:              "http",
+				BackendID:         backendName,
+				Route:             fmt.Sprintf("PathRegexp(`%s`)", pathRegex),
+				FailoverPredicate: service.FailoverPredicate,
 			}
 		}
 	}
@@ -429,10 +426,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	// create frontends
 	for feName, be := range vc.FrontEnds {
 		k := fmt.Sprintf("/vulcand/frontends/%s/frontend", feName)
-		v := fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s"}`, be.Type, be.BackendID, be.Route)
-		if be.Failover {
-			v = fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s", "Settings": {"FailoverPredicate":"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1"}}`, be.Type, be.BackendID, be.Route)
-		}
+		v := fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s", "Settings": {"FailoverPredicate":"%s"}}`, be.Type, be.BackendID, be.Route, be.FailoverPredicate)
 		m[k] = v
 		if be.rewrite.ID != "" {
 			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/rewrite", feName)
