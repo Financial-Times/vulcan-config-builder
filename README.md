@@ -10,7 +10,6 @@ etcdctl set   /ft/services/service-a/healthcheck      true
 etcdctl set   /ft/services/service-a/servers/1        "http://host:5678" --ttl 600
 etcdctl set   /ft/services/service-a/path-regex/foo   /foo/.*
 etcdctl set   /ft/services/service-a/path-regex/bar   /bar/.*
-etcdctl set   /ft/services/service-a/auth             true
 etcdctl set   /ft/services/service-a/failover         true
 ```
 
@@ -28,7 +27,6 @@ will result in
 # internal routing frontend
 /vulcand/frontends/vcb-internal-service-a/frontend            {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/__service-a/.*`)", "Settings": {"FailoverPredicate":"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1"}}
 /vulcand/frontends/vcb-internal-service-a/middlewares/rewrite {"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/__service-a(/.*)", "Replacement":"$1"}}
-/vulcand/frontends/vcb-internal-service-a/middlewares/auth    {"Type": "sauth", "Middleware":{"Username": "username", "Password": "password"}}
 
 # health check routing
 /vulcand/frontends/vcb-health-service-a-1/frontend             {"Type":"http", "BackendId":"vcb-service-a-1", "Route":"Path(`/health/service-a-1/__health`)"}
@@ -36,7 +34,6 @@ will result in
 
 # host header based routing
 /vulcand/frontends/vcb-byhostheader-service-a/frontend         {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/.*`) && Host(`service-a`)", "Settings": {"FailoverPredicate":"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1"}}
-/vulcand/frontends/vcb-byhostheader-service-a/middlewares/auth {"Type": "sauth", "Middleware":{"Username": "username", "Password": "password"}}
 
 # "public" routing
 /vulcand/frontends/vcb-service-a-path-regex-foo/frontend  {"Type":"http", "BackendId":"vcb-service-a", "Route":"PathRegexp(`/foo/.*`)", "Settings": {"FailoverPredicate":"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1"}}
