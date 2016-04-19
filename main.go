@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
-	"github.com/golang/go/src/pkg/strconv"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 	"log"
@@ -76,11 +75,11 @@ func main() {
 }
 
 type Service struct {
-	Name                string
-	HasHealthCheck      bool
-	Addresses           map[string]string
-	PathPrefixes        map[string]string
-	NeedsAuthentication bool
+	Name              string
+	HasHealthCheck    bool
+	Addresses         map[string]string
+	PathPrefixes      map[string]string
+	FailoverPredicate string
 }
 
 func readServices(kapi client.KeysAPI) []Service {
@@ -103,10 +102,10 @@ func readServices(kapi client.KeysAPI) []Service {
 			continue
 		}
 		service := Service{
-			Name:                filepath.Base(node.Key),
-			Addresses:           make(map[string]string),
-			PathPrefixes:        make(map[string]string),
-			NeedsAuthentication: false,
+			Name:              filepath.Base(node.Key),
+			Addresses:         make(map[string]string),
+			PathPrefixes:      make(map[string]string),
+			FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -120,11 +119,8 @@ func readServices(kapi client.KeysAPI) []Service {
 				for _, path := range child.Nodes {
 					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
 				}
-			case "auth":
-				service.NeedsAuthentication, err = strconv.ParseBool(child.Value)
-				if err != nil {
-					log.Printf("Authentication setting incorrect at %v: %s %v\n", node.Key, child.Value, err)
-				}
+			case "failover-predicate":
+				service.FailoverPredicate = child.Value
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
@@ -140,15 +136,15 @@ type vulcanConf struct {
 }
 
 type vulcanFrontend struct {
-	BackendID string
-	Route     string
-	Type      string
-	rewrite   vulcanRewrite
-	Auth      bool
+	BackendID         string
+	Route             string
+	Type              string
+	rewrite           vulcanRewrite
+	FailoverPredicate string
 }
 
 type vulcanRewrite struct {
-	Id         string
+	ID         string
 	Type       string
 	Priority   int
 	Middleware vulcanRewriteMw
@@ -186,10 +182,10 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 		// Host header front end
 		frontEndName := fmt.Sprintf("vcb-byhostheader-%s", service.Name)
 		vc.FrontEnds[frontEndName] = vulcanFrontend{
-			Type:      "http",
-			BackendID: backendName,
-			Route:     fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
-			Auth:      service.NeedsAuthentication,
+			Type:              "http",
+			BackendID:         backendName,
+			Route:             fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
+			FailoverPredicate: service.FailoverPredicate,
 		}
 
 		// instance backends
@@ -202,7 +198,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 
 		// health check front ends
 		if service.HasHealthCheck {
-			for svrID, _ := range service.Addresses {
+			for svrID := range service.Addresses {
 				frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.Name, svrID)
 				backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 
@@ -211,7 +207,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					BackendID: backendName,
 					Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.Name, svrID),
 					rewrite: vulcanRewrite{
-						Id:       "rewrite",
+						ID:       "rewrite",
 						Type:     "rewrite",
 						Priority: 1,
 						Middleware: vulcanRewriteMw{
@@ -231,7 +227,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			BackendID: backendName,
 			Route:     fmt.Sprintf("PathRegexp(`/__%s/.*`)", service.Name),
 			rewrite: vulcanRewrite{
-				Id:       "rewrite",
+				ID:       "rewrite",
 				Type:     "rewrite",
 				Priority: 1,
 				Middleware: vulcanRewriteMw{
@@ -239,15 +235,16 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 					Replacement: "$1",
 				},
 			},
-			Auth: service.NeedsAuthentication,
+			FailoverPredicate: service.FailoverPredicate,
 		}
 
 		// public path front ends
 		for pathName, pathRegex := range service.PathPrefixes {
 			vc.FrontEnds[fmt.Sprintf("vcb-%s-path-regex-%s", service.Name, pathName)] = vulcanFrontend{
-				Type:      "http",
-				BackendID: backendName,
-				Route:     fmt.Sprintf("PathRegexp(`%s`)", pathRegex),
+				Type:              "http",
+				BackendID:         backendName,
+				Route:             fmt.Sprintf("PathRegexp(`%s`)", pathRegex),
+				FailoverPredicate: service.FailoverPredicate,
 			}
 		}
 	}
@@ -272,7 +269,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	}
 
 	// remove unwanted frontends
-	for k, _ := range existing {
+	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/frontends/vcb-") {
 			_, found := newConf[k]
 			if !found {
@@ -286,7 +283,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	}
 
 	// remove unwanted backends
-	for k, _ := range existing {
+	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/backends/vcb-") {
 			_, found := newConf[k]
 			if !found {
@@ -429,14 +426,14 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	// create frontends
 	for feName, be := range vc.FrontEnds {
 		k := fmt.Sprintf("/vulcand/frontends/%s/frontend", feName)
-		v := fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s"}`, be.Type, be.BackendID, be.Route)
+		v := fmt.Sprintf(`{"Type":"%s", "BackendId":"%s", "Route":"%s", "Settings": {"FailoverPredicate":"%s"}}`, be.Type, be.BackendID, be.Route, be.FailoverPredicate)
 		m[k] = v
-		if be.rewrite.Id != "" {
+		if be.rewrite.ID != "" {
 			k := fmt.Sprintf("/vulcand/frontends/%s/middlewares/rewrite", feName)
 			v := fmt.Sprintf(
 
 				`{"Id":"%s", "Type":"%s", "Priority":%d, "Middleware": {"Regexp":"%s", "Replacement":"%s"}}`,
-				be.rewrite.Id,
+				be.rewrite.ID,
 				be.rewrite.Type,
 				be.rewrite.Priority,
 				be.rewrite.Middleware.Regexp,
