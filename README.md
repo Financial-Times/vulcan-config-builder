@@ -17,7 +17,7 @@ will result in
 
 ```
 # "main" backend & server(s)
-/vulcand/backends/vcb-service-a-1/backend      {"Type":"http"}
+/vulcand/backends/vcb-service-a-1/backend      {"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}
 /vulcand/backends/vcb-service-a-1/servers/1    {"url":"http://host:5678"}
 
 # instance backend & server(s)
