@@ -412,7 +412,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	// create backends
 	for beName, be := range vc.Backends {
 		k := fmt.Sprintf("/vulcand/backends/%s/backend", beName)
-		v := `{"Type":"http"}`
+		v := `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`
 		m[k] = v
 
 		for sName, s := range be.Servers {
