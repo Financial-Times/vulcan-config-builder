@@ -191,9 +191,9 @@ func TestApplyVulcanConfigRemoval(t *testing.T) {
 	}
 
 	if err := setValues(kapi, map[string]string{
-		"/vulcand/backends/foo/backend":                  `{"Type": "http"}`,
+		"/vulcand/backends/foo/backend":                  `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/foo/servers/s1":               `{"url":"http://host1.baz.com:12345"}`,
-		"/vulcand/backends/vcb-foo/backend":              `{"Type": "http"}`,
+		"/vulcand/backends/vcb-foo/backend":              `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-foo/servers/s1":           `{"url":"http://host1.baz.com:12345"}`,
 		"/vulcand/frontends/foo/frontend":                `{"Type":"http", "BackendId":"foo", "Route":"Path(\"foo-b\")"}`,
 		"/vulcand/frontends/foo/middlewares/rewrite":     `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/foo/(.*)", "Replacement":"$1"}}`,
@@ -211,7 +211,7 @@ func TestApplyVulcanConfigRemoval(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"/vulcand/backends/foo/backend":              `{"Type": "http"}`,
+		"/vulcand/backends/foo/backend":              `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/foo/servers/s1":           `{"url":"http://host1.baz.com:12345"}`,
 		"/vulcand/frontends/foo/frontend":            `{"Type":"http", "BackendId":"foo", "Route":"Path(\"foo-b\")"}`,
 		"/vulcand/frontends/foo/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/foo/(.*)", "Replacement":"$1"}}`,
@@ -290,9 +290,9 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"/vulcand/backends/vcb-service-a/backend":                          `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a/backend":                          `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a/servers/srv1":                     `{"url":"http://host1:1"}`,
-		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:1"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":           "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1\"}}",
 		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
@@ -370,9 +370,9 @@ func TestApplyVulcanConfigReplaceIdentical(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"/vulcand/backends/vcb-service-a/backend":                        `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a/backend":                        `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a/servers/s1":                     `{"url":"http://hostz:1"}`,
-		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a-s1/servers/s1":                  `{"url":"http://hostz:1"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
@@ -489,9 +489,9 @@ func TestApplyVulcanConfigReplace(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"/vulcand/backends/vcb-service-a/backend":                        `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a/backend":                        `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a/servers/s1":                     `{"url":"http://hostz:1"}`,
-		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type":"http"}`,
+		"/vulcand/backends/vcb-service-a-s1/backend":                     `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
 		"/vulcand/backends/vcb-service-a-s1/servers/s1":                  `{"url":"http://hostz:1"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":         "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-s1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-s1\", \"Route\":\"Path(`/health/service-a-s1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
