@@ -21,11 +21,11 @@ func TestReadServices(t *testing.T) {
 
 	if err := setValues(kapi, map[string]string{
 		"/ft/services/service-a/healthcheck":        "true",
-		"/ft/services/service-a/servers/srv1":       "http://host1:1",
+		"/ft/services/service-a/servers/srv1":       "http://host1:80",
 		"/ft/services/service-a/path-regex/bananas": "/bananas/.*",
 		"/ft/services/service-b/healthcheck":        "false",
-		"/ft/services/service-b/servers/srv1":       "http://host1:1",
-		"/ft/services/service-b/servers/srv2":       "http://host2:2",
+		"/ft/services/service-b/servers/srv1":       "http://host1:80",
+		"/ft/services/service-b/servers/srv2":       "http://host2:80",
 		"/ft/services/service-b/path-regex/content": "/content/.*",
 		"/ft/services/service-b/path-regex/bananas": "/bananas/.*",
 		"/ft/services/service-b/failover-predicate": "IsNetworkError()",
@@ -44,7 +44,7 @@ func TestReadServices(t *testing.T) {
 	a := Service{
 		Name:           "service-a",
 		HasHealthCheck: true,
-		Addresses:      map[string]string{"srv1": "http://host1:1"},
+		Addresses:      map[string]string{"srv1": "http://host1:80"},
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
@@ -59,8 +59,8 @@ func TestReadServices(t *testing.T) {
 		Name:           "service-b",
 		HasHealthCheck: false,
 		Addresses: map[string]string{
-			"srv1": "http://host1:1",
-			"srv2": "http://host2:2",
+			"srv1": "http://host1:80",
+			"srv2": "http://host2:80",
 		},
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
@@ -73,11 +73,98 @@ func TestReadServices(t *testing.T) {
 	}
 }
 
+func TestBuildInvalidServerVulcanConfSingleBackend(t *testing.T) {
+	a := Service{
+		Name:           "service-a",
+		HasHealthCheck: true,
+		Addresses:      map[string]string{"srv1": "http://host1:"},
+		PathPrefixes: map[string]string{
+			"bananas": "/bananas/.*",
+			"cheese":  "/cheese/.*",
+		},
+		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+	}
+
+	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kapi := client.NewKeysAPI(etcd)
+
+	vc := buildVulcanConf(kapi, []Service{a})
+
+	expected := vulcanConf{
+		Backends: map[string]vulcanBackend{
+			"vcb-service-a": vulcanBackend{
+				Servers: map[string]vulcanServer{},
+			},
+			"vcb-service-a-srv1": vulcanBackend{
+				Servers: map[string]vulcanServer{},
+			},
+		},
+		FrontEnds: map[string]vulcanFrontend{
+			"vcb-byhostheader-service-a": vulcanFrontend{
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/.*`) && Host(`service-a`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+			},
+			"vcb-internal-service-a": vulcanFrontend{
+				BackendID: "vcb-service-a",
+				Route:     "PathRegexp(`/__service-a/.*`)",
+				Type:      "http",
+				rewrite: vulcanRewrite{
+					ID:       "rewrite",
+					Type:     "rewrite",
+					Priority: 1,
+					Middleware: vulcanRewriteMw{
+						Regexp:      "/__service-a(/.*)",
+						Replacement: "$1",
+					},
+				},
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+			},
+			"vcb-health-service-a-srv1": vulcanFrontend{
+				BackendID: "vcb-service-a-srv1",
+				Route:     "Path(`/health/service-a-srv1/__health`)",
+				Type:      "http",
+				rewrite: vulcanRewrite{
+					ID:       "rewrite",
+					Type:     "rewrite",
+					Priority: 1,
+					Middleware: vulcanRewriteMw{
+						Regexp:      "/health/service-a-srv1(.*)",
+						Replacement: "$1",
+					},
+				},
+				FailoverPredicate: "",
+			},
+			"vcb-service-a-path-regex-bananas": vulcanFrontend{
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/bananas/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+			},
+			"vcb-service-a-path-regex-cheese": vulcanFrontend{
+				BackendID:         "vcb-service-a",
+				Route:             "PathRegexp(`/cheese/.*`)",
+				Type:              "http",
+				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(expected, vc) {
+		t.Errorf("vulcan conf failed. expected and actual are:\n%v\n%v\n", expected, vc)
+	}
+
+}
+
 func TestBuildVulcanConfSingleBackend(t *testing.T) {
 	a := Service{
 		Name:           "service-a",
 		HasHealthCheck: true,
-		Addresses:      map[string]string{"srv1": "http://host1:1"},
+		Addresses:      map[string]string{"srv1": "http://host1:80"},
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
@@ -97,12 +184,12 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 		Backends: map[string]vulcanBackend{
 			"vcb-service-a": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 			"vcb-service-a-srv1": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 		},
@@ -237,12 +324,12 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 		Backends: map[string]vulcanBackend{
 			"vcb-service-a": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 			"vcb-service-a-srv1": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 		},
@@ -291,9 +378,9 @@ func TestApplyVulcanConfigCreate(t *testing.T) {
 
 	expected := map[string]string{
 		"/vulcand/backends/vcb-service-a/backend":                          `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
-		"/vulcand/backends/vcb-service-a/servers/srv1":                     `{"url":"http://host1:1"}`,
+		"/vulcand/backends/vcb-service-a/servers/srv1":                     `{"url":"http://host1:80"}`,
 		"/vulcand/backends/vcb-service-a-srv1/backend":                     `{"Type": "http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}`,
-		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:1"}`,
+		"/vulcand/backends/vcb-service-a-srv1/servers/srv1":                `{"url":"http://host1:80"}`,
 		"/vulcand/frontends/vcb-byhostheader-service-a/frontend":           "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a\", \"Route\":\"PathRegexp(`/.*`) && Host(`service-a`)\", \"Settings\": {\"FailoverPredicate\":\"(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1\"}}",
 		"/vulcand/frontends/vcb-health-service-a-srv1/frontend":            "{\"Type\":\"http\", \"BackendId\":\"vcb-service-a-srv1\", \"Route\":\"Path(`/health/service-a-srv1/__health`)\", \"Settings\": {\"FailoverPredicate\":\"\"}}",
 		"/vulcand/frontends/vcb-health-service-a-srv1/middlewares/rewrite": `{"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-srv1(.*)", "Replacement":"$1"}}`,
@@ -400,12 +487,12 @@ func TestApplyVulcanConfigReplace(t *testing.T) {
 		Backends: map[string]vulcanBackend{
 			"vcb-service-a": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 			"vcb-service-a-srv1": vulcanBackend{
 				Servers: map[string]vulcanServer{
-					"srv1": vulcanServer{"http://host1:1"},
+					"srv1": vulcanServer{"http://host1:80"},
 				},
 			},
 		},

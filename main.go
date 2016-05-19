@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -163,6 +164,15 @@ type vulcanServer struct {
 	URL string
 }
 
+// Check the service address is valid (is a hostname/ip and contains a port)
+func validAddress(sa string) bool {
+	matched, err := regexp.MatchString(`^[\.\-:\/\w]*:[0-9]{2,5}$`, sa)
+	if !matched || err != nil {
+		log.Printf("Skipping invalid backend address: %v", sa)
+	}
+	return matched
+}
+
 func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 	vc := vulcanConf{
 		Backends:  make(map[string]vulcanBackend),
@@ -175,7 +185,9 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 		mainBackend := vulcanBackend{Servers: make(map[string]vulcanServer)}
 		backendName := fmt.Sprintf("vcb-%s", service.Name)
 		for svrID, sa := range service.Addresses {
-			mainBackend.Servers[svrID] = vulcanServer{sa}
+			if validAddress(sa) {
+				mainBackend.Servers[svrID] = vulcanServer{sa}
+			}
 		}
 		vc.Backends[backendName] = mainBackend
 
@@ -191,7 +203,9 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 		// instance backends
 		for svrID, sa := range service.Addresses {
 			instanceBackend := vulcanBackend{Servers: make(map[string]vulcanServer)}
-			instanceBackend.Servers[svrID] = vulcanServer{sa}
+			if validAddress(sa) {
+				instanceBackend.Servers[svrID] = vulcanServer{sa}
+			}
 			backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 			vc.Backends[backendName] = instanceBackend
 		}
