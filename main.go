@@ -22,6 +22,10 @@ var (
 )
 
 func main() {
+	if etcdPeers == "" {
+		etcdPeers = "http://localhost:2379"
+	}
+
 	transport := client.DefaultTransport
 
 	if socksProxy != "" {
