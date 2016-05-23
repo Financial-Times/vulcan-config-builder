@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
+	"github.com/jawher/mow.cli"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 	"log"
@@ -17,11 +18,25 @@ import (
 	"time"
 )
 
+var (
+	socksProxy *string
+	etcdPeers  *string
+)
+
 func main() {
-	var (
-		socksProxy = flag.String("socks-proxy", "", "Use specified SOCKS proxy (e.g. localhost:2323)")
-		etcdPeers  = flag.String("etcd-peers", "http://localhost:2379", "Comma-separated list of addresses of etcd endpoints to connect to")
-	)
+	app := cli.App("vulcan-config-builder", "Maps general service config to vulcan config.")
+	socksProxy = app.String(cli.StringOpt{
+		Name:   "socksProxy",
+		Value:  "",
+		Desc:   "Use specified SOCKS proxy (e.g. localhost:2323)",
+		EnvVar: "VCB_SOCK_PROXY",
+	})
+	etcdPeers = app.String(cli.StringOpt{
+		Name:   "etcdPeers",
+		Value:  "http://localhost:2379",
+		Desc:   "Comma-separated list of addresses of etcd endpoints to connect to.",
+		EnvVar: "VCB_ETCD_PEERS",
+	})
 
 	flag.Parse()
 
