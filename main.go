@@ -1,11 +1,9 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
-	"github.com/jawher/mow.cli"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 	"log"
@@ -19,35 +17,19 @@ import (
 )
 
 var (
-	socksProxy *string
-	etcdPeers  *string
+	socksProxy = os.Getenv("VCB_SOCK_PROXY")
+	etcdPeers  = os.Getenv("VCB_ETCD_PEERS")
 )
 
 func main() {
-	app := cli.App("vulcan-config-builder", "Maps general service config to vulcan config.")
-	socksProxy = app.String(cli.StringOpt{
-		Name:   "socksProxy",
-		Value:  "",
-		Desc:   "Use specified SOCKS proxy (e.g. localhost:2323)",
-		EnvVar: "VCB_SOCK_PROXY",
-	})
-	etcdPeers = app.String(cli.StringOpt{
-		Name:   "etcdPeers",
-		Value:  "http://localhost:2379",
-		Desc:   "Comma-separated list of addresses of etcd endpoints to connect to.",
-		EnvVar: "VCB_ETCD_PEERS",
-	})
-
-	flag.Parse()
-
 	transport := client.DefaultTransport
 
-	if *socksProxy != "" {
-		dialer, _ := proxy.SOCKS5("tcp", *socksProxy, nil, proxy.Direct)
+	if socksProxy != "" {
+		dialer, _ := proxy.SOCKS5("tcp", socksProxy, nil, proxy.Direct)
 		transport = &http.Transport{Dial: dialer.Dial}
 	}
 
-	peers := strings.Split(*etcdPeers, ",")
+	peers := strings.Split(etcdPeers, ",")
 	log.Printf("etcd peers are %v\n", peers)
 
 	cfg := client.Config{
@@ -63,7 +45,7 @@ func main() {
 
 	kapi := client.NewKeysAPI(etcd)
 
-	notifier := newNotifier(kapi, "/ft/services/", *socksProxy, peers)
+	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
 
 	tick := time.NewTicker(2 * time.Second)
 
