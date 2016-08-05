@@ -7,10 +7,10 @@ Instead of configuring vulcand directly in etcd, this tool allows a more declara
 Example
 ```
 etcdctl set   /ft/services/service-a/healthcheck      true
-etcdctl set   /ft/services/service-a/servers/1        "http://host:5678" --ttl 600
+etcdctl set   /ft/services/service-a/servers/1        "http://host:5678"
 etcdctl set   /ft/services/service-a/path-regex/foo   /foo/.*
 etcdctl set   /ft/services/service-a/path-regex/bar   /bar/.*
-etcdctl set   /ft/services/service-a/failover         true
+etcdctl set   /ft/services/service-a/failover         "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1" //default failover value if /ft/services/service-a/failover key is missing is empty
 ```
 
 will result in
@@ -21,7 +21,7 @@ will result in
 /vulcand/backends/vcb-service-a-1/servers/1    {"url":"http://host:5678"}
 
 # instance backend & server(s)
-/vulcand/backends/vcb-service-a/backend      {"Type":"http"}
+/vulcand/backends/vcb-service-a/backend      {"Type":"http", "Settings": {"KeepAlive": {"MaxIdleConnsPerHost": 256, "Period": "35s"}}}
 /vulcand/backends/vcb-service-a/servers/1    {"url":"http://host:5678"}
 
 # internal routing frontend
@@ -29,7 +29,7 @@ will result in
 /vulcand/frontends/vcb-internal-service-a/middlewares/rewrite {"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/__service-a(/.*)", "Replacement":"$1"}}
 
 # health check routing
-/vulcand/frontends/vcb-health-service-a-1/frontend             {"Type":"http", "BackendId":"vcb-service-a-1", "Route":"Path(`/health/service-a-1/__health`)"}
+/vulcand/frontends/vcb-health-service-a-1/frontend             {"Type":"http", "BackendId":"vcb-service-a-1", "Route":"Path(`/health/service-a-1/__health`)", "Settings": {"FailoverPredicate":""}}
 /vulcand/frontends/vcb-health-service-a-1/middlewares/rewrite  {"Id":"rewrite", "Type":"rewrite", "Priority":1, "Middleware": {"Regexp":"/health/service-a-1(.*)", "Replacement":"$1"}}
 
 # host header based routing

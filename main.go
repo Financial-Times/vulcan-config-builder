@@ -107,7 +107,6 @@ func readServices(kapi client.KeysAPI) []Service {
 			Name:              filepath.Base(node.Key),
 			Addresses:         make(map[string]string),
 			PathPrefixes:      make(map[string]string),
-			FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
