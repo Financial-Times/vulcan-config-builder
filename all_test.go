@@ -28,6 +28,7 @@ func TestReadServices(t *testing.T) {
 		"/ft/services/service-b/servers/srv2":       "http://host2:80",
 		"/ft/services/service-b/path-regex/content": "/content/.*",
 		"/ft/services/service-b/path-regex/bananas": "/bananas/.*",
+		"/ft/services/service-b/path-host/bananas": "custom-host",
 		"/ft/services/service-b/failover-predicate": "IsNetworkError()",
 	}); err != nil {
 		t.Error(err)
@@ -65,6 +66,9 @@ func TestReadServices(t *testing.T) {
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
+		},
+		CustomHosts: map[string]string {
+			"bananas": "custom-host",
 		},
 		FailoverPredicate: "IsNetworkError()",
 	}
@@ -169,6 +173,9 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
+		CustomHosts: map[string]string {
+			"bananas": "custom-host",
+		},
 		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
 
@@ -232,7 +239,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			},
 			"vcb-service-a-path-regex-bananas": vulcanFrontend{
 				BackendID:         "vcb-service-a",
-				Route:             "PathRegexp(`/bananas/.*`)",
+				Route:             "PathRegexp(`/bananas/.*`) && Host(`custom-host`)",
 				Type:              "http",
 				FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 			},
