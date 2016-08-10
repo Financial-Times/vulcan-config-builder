@@ -81,7 +81,7 @@ type Service struct {
 	HasHealthCheck    bool
 	Addresses         map[string]string
 	PathPrefixes      map[string]string
-	CustomHosts      map[string]string
+	CustomHosts       map[string]string
 	FailoverPredicate string
 }
 
@@ -105,10 +105,10 @@ func readServices(kapi client.KeysAPI) []Service {
 			continue
 		}
 		service := Service{
-			Name:              filepath.Base(node.Key),
-			Addresses:         make(map[string]string),
-			PathPrefixes:      make(map[string]string),
-			CustomHosts:      make(map[string]string),
+			Name:         filepath.Base(node.Key),
+			Addresses:    make(map[string]string),
+			PathPrefixes: make(map[string]string),
+			CustomHosts:  make(map[string]string),
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
