@@ -81,7 +81,7 @@ type Service struct {
 	HasHealthCheck    bool
 	Addresses         map[string]string
 	PathPrefixes      map[string]string
-	CustomHosts       map[string]string
+	PathHosts         map[string]string
 	FailoverPredicate string
 }
 
@@ -108,7 +108,7 @@ func readServices(kapi client.KeysAPI) []Service {
 			Name:         filepath.Base(node.Key),
 			Addresses:    make(map[string]string),
 			PathPrefixes: make(map[string]string),
-			CustomHosts:  make(map[string]string),
+			PathHosts:    make(map[string]string),
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -124,7 +124,7 @@ func readServices(kapi client.KeysAPI) []Service {
 				}
 			case "path-host":
 				for _, path := range child.Nodes {
-					service.CustomHosts[filepath.Base(path.Key)] = path.Value
+					service.PathHosts[filepath.Base(path.Key)] = path.Value
 				}
 			case "failover-predicate":
 				service.FailoverPredicate = child.Value
@@ -260,7 +260,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 
 		// public path front ends
 		for pathName, pathRegex := range service.PathPrefixes {
-			customHost, customHostExists := service.CustomHosts[pathName]
+			customHost, customHostExists := service.PathHosts[pathName]
 			var route string
 			if customHostExists {
 				route = fmt.Sprintf("PathRegexp(`%s`) && Host(`%s`)", pathRegex, customHost)

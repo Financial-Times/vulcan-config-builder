@@ -67,7 +67,7 @@ func TestReadServices(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
 		},
-		CustomHosts: map[string]string{
+		PathHosts: map[string]string{
 			"bananas": "custom-host",
 		},
 		FailoverPredicate: "IsNetworkError()",
@@ -173,7 +173,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
-		CustomHosts: map[string]string{
+		PathHosts: map[string]string{
 			"bananas": "custom-host",
 		},
 		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
