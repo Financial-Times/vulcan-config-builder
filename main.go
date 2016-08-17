@@ -181,7 +181,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			if addressRegex.MatchString(sa) {
 				mainBackend.Servers[svrID] = vulcanServer{sa}
 			} else {
-				log.Printf("Skipping invalid backend address: %v", sa)
+				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.Name)
 			}
 
 		}
@@ -202,7 +202,7 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 			if addressRegex.MatchString(sa) {
 				instanceBackend.Servers[svrID] = vulcanServer{sa}
 			} else {
-				log.Printf("Skipping invalid backend address: %v", sa)
+				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.Name)
 			}
 			backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
 			vc.Backends[backendName] = instanceBackend
