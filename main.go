@@ -104,9 +104,9 @@ func readServices(kapi client.KeysAPI) []Service {
 			continue
 		}
 		service := Service{
-			Name:              filepath.Base(node.Key),
-			Addresses:         make(map[string]string),
-			PathPrefixes:      make(map[string]string),
+			Name:         filepath.Base(node.Key),
+			Addresses:    make(map[string]string),
+			PathPrefixes: make(map[string]string),
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
@@ -164,10 +164,12 @@ type vulcanServer struct {
 	URL string
 }
 
+var addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
+
 // Check the service address is valid (is a hostname/ip and contains a port)
 func validAddress(sa string) bool {
-	matched, err := regexp.MatchString(`^[\.\-:\/\w]*:[0-9]{2,5}$`, sa)
-	if !matched || err != nil {
+	matched := addressRegex.MatchString(sa)
+	if !matched {
 		log.Printf("Skipping invalid backend address: %v", sa)
 	}
 	return matched
