@@ -1,2 +1,4 @@
 vulcan-config-builder
+*.idea
+*.exe
 
