@@ -71,11 +71,10 @@ func main() {
 		case <-notifier.notify():
 		}
 
-		log.Println("Change detected, waiting in cooldown period for 30 secs")
+		//TODO parameterize log
+		log.Println("Change detected, waiting in cooldown period for 1 minute")
 		// throttle
-		tick := time.NewTicker(30 * time.Second)
-		<-tick.C
-		tick.Stop()
+		<-time.After(1 * time.Minute)
 	}
 
 }
@@ -300,11 +299,13 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
+	changed := false
 	// remove unwanted frontends
 	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/frontends/vcb-") {
 			_, found := newConf[k]
 			if !found {
+				changed = true
 				log.Printf("deleting frontend %s\n", k)
 				_, err := kapi.Delete(context.Background(), k, &client.DeleteOptions{Recursive: false})
 				if err != nil {
@@ -319,6 +320,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/backends/vcb-") {
 			_, found := newConf[k]
 			if !found {
+				changed = true
 				log.Printf("deleting backend%s\n", k)
 				_, err := kapi.Delete(context.Background(), k, &client.DeleteOptions{Recursive: false})
 				if err != nil {
@@ -333,6 +335,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/backends") {
 			oldVal := existing[k]
 			if v != oldVal {
+				changed = true
 				log.Printf("setting backend %s to %s\n", k, v)
 				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 					log.Printf("error setting %s to %s\n", k, v)
@@ -346,6 +349,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/frontends") && !strings.HasSuffix(k, "/middlewares/rewrite") {
 			oldVal := existing[k]
 			if v != oldVal {
+				changed = true
 				log.Printf("setting frontend %s to %s\n", k, v)
 				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 					log.Printf("error setting %s to %s\n", k, v)
@@ -358,6 +362,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	for k, v := range newConf {
 		oldVal := existing[k]
 		if v != oldVal {
+			changed = true
 			log.Printf("setting %s to %s\n", k, v)
 			if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 				log.Printf("error setting %s to %s\n", k, v)
@@ -365,6 +370,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
+	log.Printf("Changed occured: %t ", changed)
 	// some cleanup of known possible empty directories
 	cleanFrontends(kapi)
 	cleanBackends(kapi)
