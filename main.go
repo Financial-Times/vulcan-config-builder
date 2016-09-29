@@ -13,7 +13,6 @@ import (
 
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
-	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 )
@@ -55,8 +54,6 @@ func main() {
 
 	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
 
-	tick := time.NewTicker(30 * time.Second)
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
@@ -76,7 +73,9 @@ func main() {
 
 		log.Println("Change detected, waiting in cooldown period for 30 secs")
 		// throttle
+		tick := time.NewTicker(30 * time.Second)
 		<-tick.C
+		tick.Stop()
 	}
 
 }
@@ -119,7 +118,7 @@ func readServices(kapi client.KeysAPI) []Service {
 			PathPrefixes: make(map[string]string),
 			PathHosts:    make(map[string]string),
 		}
-		log.Printf("Service: \n %# v \n", pretty.Formatter(service))
+		log.Printf("Name: %s", service.Name)
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
 			case "healthcheck":
