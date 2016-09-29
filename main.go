@@ -106,7 +106,7 @@ func readServices(kapi client.KeysAPI) []Service {
 
 	var services []Service
 
-	log.Printf("Nodes read from etcd: %# v", pretty.Formatter(resp))
+	log.Printf("Nodes read from etcd: %d", len(resp.Node.Nodes))
 
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
@@ -119,6 +119,7 @@ func readServices(kapi client.KeysAPI) []Service {
 			PathPrefixes: make(map[string]string),
 			PathHosts:    make(map[string]string),
 		}
+		log.Printf("Service: \n %# v \n", pretty.Formatter(service))
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
 			case "healthcheck":
