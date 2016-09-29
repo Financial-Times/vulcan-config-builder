@@ -13,6 +13,7 @@ import (
 
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
+	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 )
@@ -105,7 +106,8 @@ func readServices(kapi client.KeysAPI) []Service {
 
 	var services []Service
 
-	log.Printf("Nodes read from etcd: %d", len(resp.Node.Nodes))
+	log.Printf("Nodes read from etcd: %# v", pretty.Formatter(resp))
+
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
 			log.Printf("skipping non-directory %v\n", node.Key)
