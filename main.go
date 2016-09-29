@@ -2,10 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/coreos/etcd/client"
-	etcderr "github.com/coreos/etcd/error"
-	"golang.org/x/net/context"
-	"golang.org/x/net/proxy"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +10,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/coreos/etcd/client"
+	etcderr "github.com/coreos/etcd/error"
+	"golang.org/x/net/context"
+	"golang.org/x/net/proxy"
 )
 
 var (
@@ -53,7 +54,7 @@ func main() {
 
 	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
 
-	tick := time.NewTicker(2 * time.Second)
+	tick := time.NewTicker(30 * time.Second)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -72,6 +73,7 @@ func main() {
 		case <-notifier.notify():
 		}
 
+		log.Println("Change detected, waiting in cooldown period for 30 secs")
 		// throttle
 		<-tick.C
 	}
@@ -90,7 +92,9 @@ type Service struct {
 func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
+		log.Println("Error reading etcd keys.")
 		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
+			log.Println("Core key not found.")
 			return []Service{}
 		}
 		log.Panicf("failed to read from etcd: %v\n", err.Error())
@@ -101,6 +105,7 @@ func readServices(kapi client.KeysAPI) []Service {
 
 	var services []Service
 
+	log.Printf("Nodes read from etcd: %d", len(resp.Node.Nodes))
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
 			log.Printf("skipping non-directory %v\n", node.Key)
