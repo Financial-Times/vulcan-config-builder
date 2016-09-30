@@ -495,7 +495,8 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 			var err error
 
 			for err == nil {
-				_, err = watcher.Next(context.Background())
+				response, err = watcher.Next(context.Background())
+				log.Printf("Watcher response: %# v", response)
 				select {
 				case w.ch <- struct{}{}:
 				default:
