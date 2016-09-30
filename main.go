@@ -13,6 +13,7 @@ import (
 
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
+	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 )
@@ -69,6 +70,7 @@ func main() {
 			log.Println("exiting")
 			return
 		case <-notifier.notify():
+			log.Println("Got notification")
 		}
 
 		//TODO parameterize log
@@ -497,10 +499,13 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 
 			for err == nil {
 				response, err = watcher.Next(context.Background())
-				log.Printf("Watcher response: %# v", response)
+				log.Printf("Watcher response: %# v", pretty.Formatter(response))
+				//non-blocking send on a channel
 				select {
 				case w.ch <- struct{}{}:
+					log.Println("Sent message on notifier channel.")
 				default:
+					log.Println("Didn't send message on notifier channel.")
 				}
 			}
 
