@@ -13,7 +13,6 @@ import (
 
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
-	"github.com/kr/pretty"
 	"golang.org/x/net/context"
 	"golang.org/x/net/proxy"
 )
@@ -119,7 +118,6 @@ func readServices(kapi client.KeysAPI) []Service {
 			PathPrefixes: make(map[string]string),
 			PathHosts:    make(map[string]string),
 		}
-		log.Printf("Name: %s", service.Name)
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
 			case "healthcheck":
@@ -487,7 +485,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 }
 
 func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
-	w := notifier{make(chan struct{}, 1)}
+	w := notifier{make(chan struct{}, 0)}
 
 	go func() {
 
@@ -499,7 +497,7 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 
 			for err == nil {
 				response, err = watcher.Next(context.Background())
-				log.Printf("Watcher response: %# v", pretty.Formatter(response))
+				log.Printf("Watcher response: %d", response.Index)
 				//non-blocking send on a channel
 				select {
 				case w.ch <- struct{}{}:
