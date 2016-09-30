@@ -493,6 +493,7 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
 
 			var err error
+			var response *client.Response
 
 			for err == nil {
 				response, err = watcher.Next(context.Background())
