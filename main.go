@@ -60,7 +60,7 @@ func main() {
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
-		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
+		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi, notifier)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
@@ -75,7 +75,7 @@ func main() {
 		//TODO parameterize log
 		log.Println("Change detected, waiting in cooldown period for 1 minute")
 		// throttle
-		<-time.After(1 * time.Minute)
+		<-time.After(30 * time.Second)
 	}
 
 }
@@ -89,7 +89,10 @@ type Service struct {
 	FailoverPredicate string
 }
 
-func readServices(kapi client.KeysAPI) []Service {
+func readServices(kapi client.KeysAPI, notif notifier) []Service {
+	//empty notification channel
+	for range notif.notify() {
+	}
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
 		log.Println("Error reading etcd keys.")
@@ -386,7 +389,7 @@ func cleanFrontends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Printf("/vulcand/frontends is not a directory.")
+		log.Print("/vulcand/frontends is not a directory.")
 		return
 	}
 	for _, fe := range resp.Node.Nodes {
@@ -420,7 +423,7 @@ func cleanBackends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Printf("/vulcand/backends is not a directory.")
+		log.Print("/vulcand/backends is not a directory.")
 		return
 	}
 	for _, be := range resp.Node.Nodes {
@@ -485,7 +488,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 }
 
 func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
-	w := notifier{make(chan struct{}, 0)}
+	w := notifier{make(chan uint64, 100)}
 
 	go func() {
 
@@ -498,13 +501,8 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 			for err == nil {
 				response, err = watcher.Next(context.Background())
 				log.Printf("Watcher response: %d", response.Index)
-				//non-blocking send on a channel
-				select {
-				case w.ch <- struct{}{}:
-					log.Println("Sent message on notifier channel.")
-				default:
-					log.Println("Didn't send message on notifier channel.")
-				}
+				w.ch <- response.Index
+				log.Println("Sent message on notifier channel.")
 			}
 
 			if err == context.Canceled {
@@ -527,10 +525,10 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 }
 
 type notifier struct {
-	ch chan struct{}
+	ch chan uint64
 }
 
-func (w *notifier) notify() <-chan struct{} {
+func (w *notifier) notify() <-chan uint64 {
 	return w.ch
 }
 
