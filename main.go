@@ -74,7 +74,7 @@ func main() {
 		}
 
 		//TODO parameterize log
-		log.Println("Change detected, waiting in cooldown period for 1 minute")
+		log.Println("Change detected, waiting in cooldown period")
 		// throttle
 		<-time.After(30 * time.Second)
 	}
@@ -83,6 +83,7 @@ func main() {
 
 func drainChannel(notifications <-chan uint64) {
 	readNotifications := true
+	log.Print("Draining notifications channel")
 	for readNotifications {
 		select {
 		case <-notifications:
@@ -90,6 +91,7 @@ func drainChannel(notifications <-chan uint64) {
 			readNotifications = false
 		}
 	}
+	log.Print("Finished draining notifications channel")
 }
 
 type Service struct {
