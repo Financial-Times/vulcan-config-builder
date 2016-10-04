@@ -60,7 +60,8 @@ func main() {
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
-		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi, notifier)))
+		drainChannel(notifier.notify())
+		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
@@ -80,6 +81,17 @@ func main() {
 
 }
 
+func drainChannel(notifications <-chan uint64) {
+	readNotifications := true
+	for readNotifications {
+		select {
+		case <-notifications:
+		default:
+			readNotifications = false
+		}
+	}
+}
+
 type Service struct {
 	Name              string
 	HasHealthCheck    bool
@@ -89,10 +101,7 @@ type Service struct {
 	FailoverPredicate string
 }
 
-func readServices(kapi client.KeysAPI, notif notifier) []Service {
-	//empty notification channel
-	for range notif.notify() {
-	}
+func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
 		log.Println("Error reading etcd keys.")
