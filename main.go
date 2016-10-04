@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,10 +19,12 @@ import (
 )
 
 var (
-	socksProxy = os.Getenv("VCB_SOCK_PROXY")
-	etcdPeers  = os.Getenv("VCB_ETCD_PEERS")
+	socksProxy              = os.Getenv("VCB_SOCK_PROXY")
+	etcdPeers               = os.Getenv("VCB_ETCD_PEERS")
+	cooldownPeriod          = os.Getenv("VCB_COOLDOWN_PERIOD")
+	notificationsBufferSize = os.Getenv("VCB_NOTIFICATIONS_BUFFER_SIZE")
 
-	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
+	addressRegex = regexp.MustCompile(`^[.\-:/\w]*:[0-9]{2,5}$`)
 )
 
 func main() {
@@ -50,19 +53,35 @@ func main() {
 		log.Fatalf("failed to start etcd client: %v\n", err.Error())
 	}
 
-	kapi := client.NewKeysAPI(etcd)
+	cooldown := 30
+	if cooldownPeriod != "" {
+		cooldown, err = strconv.Atoi(cooldownPeriod)
+		if err != nil {
+			log.Printf("WARN - The provided cooldownPeriod=%s is invalid, using default value=%v", cooldownPeriod, cooldown)
+		}
+	}
 
-	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
+	bufferSize := 128
+	if notificationsBufferSize != "" {
+		bufferSize, err = strconv.Atoi(notificationsBufferSize)
+		if err != nil {
+			log.Printf("WARN - The provided notificationsBufferSize=%s is invalid, using default value=%v", notificationsBufferSize, bufferSize)
+		}
+	}
+
+	kapi := client.NewKeysAPI(etcd)
+	notifier := newNotifier(kapi, "/ft/services/", bufferSize)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
 	for {
-		s := time.Now()
+		reconfigStartTime := time.Now()
 		log.Println("rebuilding configuration")
+		// since vcb reads all the changes made in etcd, all notifications still in the channel can be ignored.
 		drainChannel(notifier.notify())
-		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
-		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
+		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
+		log.Printf("completed reconfiguration. %v\n", time.Since(reconfigStartTime))
 
 		// wait for a change
 		select {
@@ -70,20 +89,17 @@ func main() {
 			log.Println("exiting")
 			return
 		case <-notifier.notify():
-			log.Println("Got notification")
 		}
 
-		//TODO parameterize log
-		log.Println("Change detected, waiting in cooldown period")
-		// throttle
-		<-time.After(30 * time.Second)
+		log.Printf("change detected, waiting in cooldown period for %v", cooldown)
+		<-time.After(time.Duration(cooldown) * time.Second)
 	}
 
 }
 
-func drainChannel(notifications <-chan uint64) {
+func drainChannel(notifications <-chan struct{}) {
 	readNotifications := true
-	log.Print("Draining notifications channel")
+	log.Println("draining notifications channel")
 	for readNotifications {
 		select {
 		case <-notifications:
@@ -91,25 +107,25 @@ func drainChannel(notifications <-chan uint64) {
 			readNotifications = false
 		}
 	}
-	log.Print("Finished draining notifications channel")
+	log.Println("finished draining notifications channel")
 }
 
-type Service struct {
-	Name              string
-	HasHealthCheck    bool
-	Addresses         map[string]string
-	PathPrefixes      map[string]string
-	PathHosts         map[string]string
-	FailoverPredicate string
+type service struct {
+	name              string
+	hasHealthCheck    bool
+	addresses         map[string]string
+	pathPrefixes      map[string]string
+	pathHosts         map[string]string
+	failoverPredicate string
 }
 
-func readServices(kapi client.KeysAPI) []Service {
+func readServices(kapi client.KeysAPI) []service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
-		log.Println("Error reading etcd keys.")
+		log.Println("error reading etcd keys.")
 		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
-			log.Println("Core key not found.")
-			return []Service{}
+			log.Println("core key not found.")
+			return []service{}
 		}
 		log.Panicf("failed to read from etcd: %v\n", err.Error())
 	}
@@ -117,44 +133,42 @@ func readServices(kapi client.KeysAPI) []Service {
 		log.Panicf("%v is not a directory", resp.Node.Key)
 	}
 
-	var services []Service
-
-	log.Printf("Nodes read from etcd: %d", len(resp.Node.Nodes))
+	var services []service
 
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
 			log.Printf("skipping non-directory %v\n", node.Key)
 			continue
 		}
-		service := Service{
-			Name:         filepath.Base(node.Key),
-			Addresses:    make(map[string]string),
-			PathPrefixes: make(map[string]string),
-			PathHosts:    make(map[string]string),
+		s := service{
+			name:         filepath.Base(node.Key),
+			addresses:    make(map[string]string),
+			pathPrefixes: make(map[string]string),
+			pathHosts:    make(map[string]string),
 		}
 		for _, child := range node.Nodes {
 			switch filepath.Base(child.Key) {
 			case "healthcheck":
-				service.HasHealthCheck = child.Value == "true"
+				s.hasHealthCheck = child.Value == "true"
 			case "servers":
 				for _, server := range child.Nodes {
-					service.Addresses[filepath.Base(server.Key)] = server.Value
+					s.addresses[filepath.Base(server.Key)] = server.Value
 				}
 			case "path-regex":
 				for _, path := range child.Nodes {
-					service.PathPrefixes[filepath.Base(path.Key)] = path.Value
+					s.pathPrefixes[filepath.Base(path.Key)] = path.Value
 				}
 			case "path-host":
 				for _, path := range child.Nodes {
-					service.PathHosts[filepath.Base(path.Key)] = path.Value
+					s.pathHosts[filepath.Base(path.Key)] = path.Value
 				}
 			case "failover-predicate":
-				service.FailoverPredicate = child.Value
+				s.failoverPredicate = child.Value
 			default:
 				fmt.Printf("skipped key %v for node %v\n", child.Key, child)
 			}
 		}
-		services = append(services, service)
+		services = append(services, s)
 	}
 	return services
 }
@@ -192,7 +206,7 @@ type vulcanServer struct {
 	URL string
 }
 
-func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
+func buildVulcanConf(services []service) vulcanConf {
 	vc := vulcanConf{
 		Backends:  make(map[string]vulcanBackend),
 		FrontEnds: make(map[string]vulcanFrontend),
@@ -202,54 +216,54 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 
 		// "main" backend
 		mainBackend := vulcanBackend{Servers: make(map[string]vulcanServer)}
-		backendName := fmt.Sprintf("vcb-%s", service.Name)
-		for svrID, sa := range service.Addresses {
+		backendName := fmt.Sprintf("vcb-%s", service.name)
+		for svrID, sa := range service.addresses {
 			if addressRegex.MatchString(sa) {
 				mainBackend.Servers[svrID] = vulcanServer{sa}
 			} else {
-				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.Name)
+				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.name)
 			}
 
 		}
 		vc.Backends[backendName] = mainBackend
 
 		// Host header front end
-		frontEndName := fmt.Sprintf("vcb-byhostheader-%s", service.Name)
+		frontEndName := fmt.Sprintf("vcb-byhostheader-%s", service.name)
 		vc.FrontEnds[frontEndName] = vulcanFrontend{
 			Type:              "http",
 			BackendID:         backendName,
-			Route:             fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.Name),
-			FailoverPredicate: service.FailoverPredicate,
+			Route:             fmt.Sprintf("PathRegexp(`/.*`) && Host(`%s`)", service.name),
+			FailoverPredicate: service.failoverPredicate,
 		}
 
 		// instance backends
-		for svrID, sa := range service.Addresses {
+		for svrID, sa := range service.addresses {
 			instanceBackend := vulcanBackend{Servers: make(map[string]vulcanServer)}
 			if addressRegex.MatchString(sa) {
 				instanceBackend.Servers[svrID] = vulcanServer{sa}
 			} else {
-				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.Name)
+				log.Printf("Skipping invalid backend address: %v for service %s\n", sa, service.name)
 			}
-			backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
+			backendName = fmt.Sprintf("vcb-%s-%s", service.name, svrID)
 			vc.Backends[backendName] = instanceBackend
 		}
 
 		// health check front ends
-		if service.HasHealthCheck {
-			for svrID := range service.Addresses {
-				frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.Name, svrID)
-				backendName := fmt.Sprintf("vcb-%s-%s", service.Name, svrID)
+		if service.hasHealthCheck {
+			for svrID := range service.addresses {
+				frontEndName := fmt.Sprintf("vcb-health-%s-%s", service.name, svrID)
+				backendName = fmt.Sprintf("vcb-%s-%s", service.name, svrID)
 
 				vc.FrontEnds[frontEndName] = vulcanFrontend{
 					Type:      "http",
 					BackendID: backendName,
-					Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.Name, svrID),
+					Route:     fmt.Sprintf("Path(`/health/%s-%s/__health`)", service.name, svrID),
 					rewrite: vulcanRewrite{
 						ID:       "rewrite",
 						Type:     "rewrite",
 						Priority: 1,
 						Middleware: vulcanRewriteMw{
-							Regexp:      fmt.Sprintf("/health/%s-%s(.*)", service.Name, svrID),
+							Regexp:      fmt.Sprintf("/health/%s-%s(.*)", service.name, svrID),
 							Replacement: "$1",
 						},
 					},
@@ -259,37 +273,37 @@ func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
 		}
 
 		// internal frontend
-		internalFrontEndName := fmt.Sprintf("vcb-internal-%s", service.Name)
+		internalFrontEndName := fmt.Sprintf("vcb-internal-%s", service.name)
 		vc.FrontEnds[internalFrontEndName] = vulcanFrontend{
 			Type:      "http",
 			BackendID: backendName,
-			Route:     fmt.Sprintf("PathRegexp(`/__%s/.*`)", service.Name),
+			Route:     fmt.Sprintf("PathRegexp(`/__%s/.*`)", service.name),
 			rewrite: vulcanRewrite{
 				ID:       "rewrite",
 				Type:     "rewrite",
 				Priority: 1,
 				Middleware: vulcanRewriteMw{
-					Regexp:      fmt.Sprintf("/__%s(/.*)", service.Name),
+					Regexp:      fmt.Sprintf("/__%s(/.*)", service.name),
 					Replacement: "$1",
 				},
 			},
-			FailoverPredicate: service.FailoverPredicate,
+			FailoverPredicate: service.failoverPredicate,
 		}
 
 		// public path front ends
-		for pathName, pathRegex := range service.PathPrefixes {
-			customHost, customHostExists := service.PathHosts[pathName]
+		for pathName, pathRegex := range service.pathPrefixes {
+			customHost, customHostExists := service.pathHosts[pathName]
 			var route string
 			if customHostExists {
 				route = fmt.Sprintf("PathRegexp(`%s`) && Host(`%s`)", pathRegex, customHost)
 			} else {
 				route = fmt.Sprintf("PathRegexp(`%s`)", pathRegex)
 			}
-			vc.FrontEnds[fmt.Sprintf("vcb-%s-path-regex-%s", service.Name, pathName)] = vulcanFrontend{
+			vc.FrontEnds[fmt.Sprintf("vcb-%s-path-regex-%s", service.name, pathName)] = vulcanFrontend{
 				Type:              "http",
 				BackendID:         backendName,
 				Route:             route,
-				FailoverPredicate: service.FailoverPredicate,
+				FailoverPredicate: service.failoverPredicate,
 			}
 		}
 	}
@@ -384,7 +398,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
-	log.Printf("Changed occured: %t ", changed)
+	log.Printf("changes occured: %t ", changed)
 	// some cleanup of known possible empty directories
 	cleanFrontends(kapi)
 	cleanBackends(kapi)
@@ -400,7 +414,7 @@ func cleanFrontends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Print("/vulcand/frontends is not a directory.")
+		log.Println("/vulcand/frontends is not a directory.")
 		return
 	}
 	for _, fe := range resp.Node.Nodes {
@@ -434,7 +448,7 @@ func cleanBackends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Print("/vulcand/backends is not a directory.")
+		log.Println("/vulcand/backends is not a directory.")
 		return
 	}
 	for _, be := range resp.Node.Nodes {
@@ -498,22 +512,18 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
-	w := notifier{make(chan uint64, 100)}
+func newNotifier(kapi client.KeysAPI, path string, bufferSize int) notifier {
+	w := notifier{make(chan struct{}, bufferSize)}
 
 	go func() {
-
 		for {
 			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
 
 			var err error
-			var response *client.Response
-
 			for err == nil {
-				response, err = watcher.Next(context.Background())
-				log.Printf("Watcher response: %d", response.Index)
-				w.ch <- response.Index
-				log.Println("Sent message on notifier channel.")
+				_, err = watcher.Next(context.Background())
+				w.ch <- struct{}{}
+				log.Println("sent message on notifier channel.")
 			}
 
 			if err == context.Canceled {
@@ -536,10 +546,10 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 }
 
 type notifier struct {
-	ch chan uint64
+	ch chan struct{}
 }
 
-func (w *notifier) notify() <-chan uint64 {
+func (w *notifier) notify() <-chan struct{} {
 	return w.ch
 }
 

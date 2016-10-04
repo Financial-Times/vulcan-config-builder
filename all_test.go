@@ -1,11 +1,12 @@
 package main
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
 	"golang.org/x/net/context"
-	"reflect"
-	"testing"
 )
 
 func TestReadServices(t *testing.T) {
@@ -34,43 +35,43 @@ func TestReadServices(t *testing.T) {
 		t.Error(err)
 	}
 
-	smap := make(map[string]Service)
+	smap := make(map[string]service)
 	for _, s := range readServices(kapi) {
-		smap[s.Name] = s
+		smap[s.name] = s
 	}
 	if len(smap) != 2 {
 		t.Fatal("unexpected length")
 	}
 
-	a := Service{
-		Name:           "service-a",
-		HasHealthCheck: true,
-		Addresses:      map[string]string{"srv1": "http://host1:80"},
-		PathPrefixes: map[string]string{
+	a := service{
+		name:           "service-a",
+		hasHealthCheck: true,
+		addresses:      map[string]string{"srv1": "http://host1:80"},
+		pathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
-		FailoverPredicate: "",
+		failoverPredicate: "",
 	}
 
 	if !reflect.DeepEqual(a, smap["service-a"]) {
 		t.Errorf("service does not match. expected and acual are :\n%v\n%v\n", a, smap["service-a"])
 	}
 
-	b := Service{
-		Name:           "service-b",
-		HasHealthCheck: false,
-		Addresses: map[string]string{
+	b := service{
+		name:           "service-b",
+		hasHealthCheck: false,
+		addresses: map[string]string{
 			"srv1": "http://host1:80",
 			"srv2": "http://host2:80",
 		},
-		PathPrefixes: map[string]string{
+		pathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 			"content": "/content/.*",
 		},
-		PathHosts: map[string]string{
+		pathHosts: map[string]string{
 			"bananas": "custom-host",
 		},
-		FailoverPredicate: "IsNetworkError()",
+		failoverPredicate: "IsNetworkError()",
 	}
 	if !reflect.DeepEqual(b, smap["service-b"]) {
 		t.Errorf("service does not match:\n%v\n%v\n", b, smap["service-b"])
@@ -78,24 +79,17 @@ func TestReadServices(t *testing.T) {
 }
 
 func TestBuildInvalidServerVulcanConfSingleBackend(t *testing.T) {
-	a := Service{
-		Name:           "service-a",
-		HasHealthCheck: true,
-		Addresses:      map[string]string{"srv1": "http://host1:"},
-		PathPrefixes: map[string]string{
+	a := service{
+		name:           "service-a",
+		hasHealthCheck: true,
+		addresses:      map[string]string{"srv1": "http://host1:"},
+		pathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
-		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+		failoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
-
-	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kapi := client.NewKeysAPI(etcd)
-
-	vc := buildVulcanConf(kapi, []Service{a})
+	vc := buildVulcanConf([]service{a})
 
 	expected := vulcanConf{
 		Backends: map[string]vulcanBackend{
@@ -165,27 +159,20 @@ func TestBuildInvalidServerVulcanConfSingleBackend(t *testing.T) {
 }
 
 func TestBuildVulcanConfSingleBackend(t *testing.T) {
-	a := Service{
-		Name:           "service-a",
-		HasHealthCheck: true,
-		Addresses:      map[string]string{"srv1": "http://host1:80"},
-		PathPrefixes: map[string]string{
+	a := service{
+		name:           "service-a",
+		hasHealthCheck: true,
+		addresses:      map[string]string{"srv1": "http://host1:80"},
+		pathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 			"cheese":  "/cheese/.*",
 		},
-		PathHosts: map[string]string{
+		pathHosts: map[string]string{
 			"bananas": "custom-host",
 		},
-		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
+		failoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
-
-	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kapi := client.NewKeysAPI(etcd)
-
-	vc := buildVulcanConf(kapi, []Service{a})
+	vc := buildVulcanConf([]service{a})
 
 	expected := vulcanConf{
 		Backends: map[string]vulcanBackend{
