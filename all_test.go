@@ -1,11 +1,12 @@
 package main
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
 	"golang.org/x/net/context"
-	"reflect"
-	"testing"
 )
 
 func TestReadServices(t *testing.T) {

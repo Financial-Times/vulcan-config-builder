@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
 	"golang.org/x/net/context"
@@ -18,8 +20,10 @@ import (
 )
 
 var (
-	socksProxy = os.Getenv("VCB_SOCK_PROXY")
-	etcdPeers  = os.Getenv("VCB_ETCD_PEERS")
+	socksProxy              = os.Getenv("VCB_SOCK_PROXY")
+	etcdPeers               = os.Getenv("VCB_ETCD_PEERS")
+	cooldownPeriod          = os.Getenv("VCB_COOLDOWN_PERIOD")
+	notificationsBufferSize = os.Getenv("VCB_NOTIFICATIONS_BUFFER_SIZE")
 
 	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
 )
@@ -50,9 +54,24 @@ func main() {
 		log.Fatalf("failed to start etcd client: %v\n", err.Error())
 	}
 
-	kapi := client.NewKeysAPI(etcd)
+	cooldown := 30
+	if cooldownPeriod != "" {
+		cooldown, err = strconv.Atoi(cooldownPeriod)
+		if err != nil {
+			log.Printf("WARN - The provided cooldownPeriod=%s is invalid, using default value=%v", cooldownPeriod, cooldown)
+		}
+	}
 
-	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
+	bufferSize := 128
+	if notificationsBufferSize != "" {
+		bufferSize, err = strconv.Atoi(notificationsBufferSize)
+		if err != nil {
+			log.Printf("WARN - The provided notificationsBufferSize=%s is invalid, using default value=%v", notificationsBufferSize, bufferSize)
+		}
+	}
+
+	kapi := client.NewKeysAPI(etcd)
+	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers, bufferSize)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -60,6 +79,7 @@ func main() {
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
+		// since vcb reads all the changes made in etcd, all notifications still in the channel can be ignored.
 		drainChannel(notifier.notify())
 		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
@@ -73,17 +93,15 @@ func main() {
 			log.Println("Got notification")
 		}
 
-		//TODO parameterize log
-		log.Println("Change detected, waiting in cooldown period")
-		// throttle
-		<-time.After(30 * time.Second)
+		log.Printf("change detected, waiting in cooldown period for %v", cooldown)
+		<-time.After(time.Duration(cooldown) * time.Second)
 	}
 
 }
 
-func drainChannel(notifications <-chan uint64) {
+func drainChannel(notifications <-chan struct{}) {
 	readNotifications := true
-	log.Print("Draining notifications channel")
+	log.Println("draining notifications channel")
 	for readNotifications {
 		select {
 		case <-notifications:
@@ -91,7 +109,7 @@ func drainChannel(notifications <-chan uint64) {
 			readNotifications = false
 		}
 	}
-	log.Print("Finished draining notifications channel")
+	log.Println("finished draining notifications channel")
 }
 
 type Service struct {
@@ -498,8 +516,8 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
-	w := notifier{make(chan uint64, 100)}
+func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string, bufferSize int) notifier {
+	w := notifier{make(chan struct{}, bufferSize)}
 
 	go func() {
 
@@ -512,7 +530,7 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 			for err == nil {
 				response, err = watcher.Next(context.Background())
 				log.Printf("Watcher response: %d", response.Index)
-				w.ch <- response.Index
+				w.ch <- struct{}{}
 				log.Println("Sent message on notifier channel.")
 			}
 
@@ -536,10 +554,10 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 }
 
 type notifier struct {
-	ch chan uint64
+	ch chan struct{}
 }
 
-func (w *notifier) notify() <-chan uint64 {
+func (w *notifier) notify() <-chan struct{} {
 	return w.ch
 }
 
