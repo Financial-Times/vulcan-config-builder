@@ -1,6 +1,6 @@
 FROM alpine
 
-ADD  main.go /
+ADD  *.go /
 RUN apk add --update bash \
   && apk --update add go git\
   && ORG_PATH="github.com/Financial-Times" \
