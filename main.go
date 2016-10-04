@@ -24,7 +24,7 @@ var (
 	cooldownPeriod          = os.Getenv("VCB_COOLDOWN_PERIOD")
 	notificationsBufferSize = os.Getenv("VCB_NOTIFICATIONS_BUFFER_SIZE")
 
-	addressRegex = regexp.MustCompile(`^[.\-:/\w]*:[0-9]{2,5}$`)
+	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
 )
 
 func main() {
