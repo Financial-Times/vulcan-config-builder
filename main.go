@@ -22,7 +22,7 @@ import (
 var (
 	socksProxy              = os.Getenv("VCB_SOCK_PROXY")
 	etcdPeers               = os.Getenv("VCB_ETCD_PEERS")
-	cooldownPeriod          = os.Getenv("VCB_COOLDOWN_PERIOD")
+	cooldownSeconds         = os.Getenv("VCB_COOLDOWN_SECONDS")
 	notificationsBufferSize = os.Getenv("VCB_NOTIFICATIONS_BUFFER_SIZE")
 
 	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
@@ -55,10 +55,10 @@ func main() {
 	}
 
 	cooldown := 30
-	if cooldownPeriod != "" {
-		cooldown, err = strconv.Atoi(cooldownPeriod)
+	if cooldownSeconds != "" {
+		cooldown, err = strconv.Atoi(cooldownSeconds)
 		if err != nil {
-			log.Printf("WARN - The provided cooldownPeriod=%s is invalid, using default value=%v", cooldownPeriod, cooldown)
+			log.Printf("WARN - The provided cooldownPeriod=%s is invalid, using default value=%v", cooldownSeconds, cooldown)
 		}
 	}
 
@@ -90,10 +90,9 @@ func main() {
 			log.Println("exiting")
 			return
 		case <-notifier.notify():
-			log.Println("Got notification")
 		}
 
-		log.Printf("change detected, waiting in cooldown period for %v", cooldown)
+		log.Printf("change detected, waiting in cooldown period for %v seconds", cooldown)
 		<-time.After(time.Duration(cooldown) * time.Second)
 	}
 
@@ -124,9 +123,9 @@ type Service struct {
 func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
-		log.Println("Error reading etcd keys.")
+		log.Println("error reading etcd keys")
 		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
-			log.Println("Core key not found.")
+			log.Println("core key not found")
 			return []Service{}
 		}
 		log.Panicf("failed to read from etcd: %v\n", err.Error())
@@ -136,9 +135,6 @@ func readServices(kapi client.KeysAPI) []Service {
 	}
 
 	var services []Service
-
-	log.Printf("Nodes read from etcd: %d", len(resp.Node.Nodes))
-
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
 			log.Printf("skipping non-directory %v\n", node.Key)
@@ -402,7 +398,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
-	log.Printf("Changed occured: %t ", changed)
+	log.Printf("changes occured in etcd: %t ", changed)
 	// some cleanup of known possible empty directories
 	cleanFrontends(kapi)
 	cleanBackends(kapi)
