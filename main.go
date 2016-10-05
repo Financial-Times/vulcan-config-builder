@@ -414,7 +414,7 @@ func cleanFrontends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Print("/vulcand/frontends is not a directory.")
+		log.Println("/vulcand/frontends is not a directory.")
 		return
 	}
 	for _, fe := range resp.Node.Nodes {
@@ -448,7 +448,7 @@ func cleanBackends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Print("/vulcand/backends is not a directory.")
+		log.Println("/vulcand/backends is not a directory.")
 		return
 	}
 	for _, be := range resp.Node.Nodes {
