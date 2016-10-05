@@ -71,7 +71,7 @@ func main() {
 	}
 
 	kapi := client.NewKeysAPI(etcd)
-	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers, bufferSize)
+	notifier := newNotifier(kapi, "/ft/services/", bufferSize)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -81,7 +81,7 @@ func main() {
 		log.Println("rebuilding configuration")
 		// since vcb reads all the changes made in etcd, all notifications still in the channel can be ignored.
 		drainChannel(notifier.notify())
-		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
+		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
@@ -206,7 +206,7 @@ type vulcanServer struct {
 	URL string
 }
 
-func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
+func buildVulcanConf(services []Service) vulcanConf {
 	vc := vulcanConf{
 		Backends:  make(map[string]vulcanBackend),
 		FrontEnds: make(map[string]vulcanFrontend),
@@ -512,7 +512,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string, bufferSize int) notifier {
+func newNotifier(kapi client.KeysAPI, path string, bufferSize int) notifier {
 	w := notifier{make(chan struct{}, bufferSize)}
 
 	go func() {
@@ -521,13 +521,11 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
 
 			var err error
-			var response *client.Response
 
 			for err == nil {
-				response, err = watcher.Next(context.Background())
-				log.Printf("Watcher response: %d", response.Index)
+				_, err = watcher.Next(context.Background())
 				w.ch <- struct{}{}
-				log.Println("Sent message on notifier channel.")
+				log.Println("received event from watcher, sent change message on notifier channel.")
 			}
 
 			if err == context.Canceled {
