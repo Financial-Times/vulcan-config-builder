@@ -20,10 +20,9 @@ import (
 )
 
 var (
-	socksProxy              = os.Getenv("VCB_SOCK_PROXY")
-	etcdPeers               = os.Getenv("VCB_ETCD_PEERS")
-	cooldownSeconds         = os.Getenv("VCB_COOLDOWN_SECONDS")
-	notificationsBufferSize = os.Getenv("VCB_NOTIFICATIONS_BUFFER_SIZE")
+	socksProxy      = os.Getenv("VCB_SOCK_PROXY")
+	etcdPeers       = os.Getenv("VCB_ETCD_PEERS")
+	cooldownSeconds = os.Getenv("VCB_COOLDOWN_SECONDS")
 
 	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
 )
@@ -62,16 +61,8 @@ func main() {
 		}
 	}
 
-	bufferSize := 128
-	if notificationsBufferSize != "" {
-		bufferSize, err = strconv.Atoi(notificationsBufferSize)
-		if err != nil {
-			log.Printf("WARN - The provided notificationsBufferSize=%s is invalid, using default value=%v", notificationsBufferSize, bufferSize)
-		}
-	}
-
 	kapi := client.NewKeysAPI(etcd)
-	notifier := newNotifier(kapi, "/ft/services/", bufferSize)
+	notifier := newNotifier(kapi, "/ft/services/")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -81,6 +72,8 @@ func main() {
 		log.Println("rebuilding configuration")
 		// since vcb reads all the changes made in etcd, all notifications still in the channel can be ignored.
 		drainChannel(notifier.notify())
+		log.Printf("drained notifications channel")
+
 		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
@@ -98,17 +91,15 @@ func main() {
 
 }
 
-func drainChannel(notifications <-chan struct{}) {
-	readNotifications := true
-	log.Println("draining notifications channel")
-	for readNotifications {
+func drainChannel(ch <-chan struct{}) {
+	drain := true
+	for drain {
 		select {
-		case <-notifications:
+		case <-ch:
 		default:
-			readNotifications = false
+			drain = false
 		}
 	}
-	log.Println("finished draining notifications channel")
 }
 
 type Service struct {
@@ -512,8 +503,8 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newNotifier(kapi client.KeysAPI, path string, bufferSize int) notifier {
-	w := notifier{make(chan struct{}, bufferSize)}
+func newNotifier(kapi client.KeysAPI, path string) notifier {
+	w := notifier{make(chan struct{}, 1)}
 
 	go func() {
 
@@ -524,8 +515,12 @@ func newNotifier(kapi client.KeysAPI, path string, bufferSize int) notifier {
 
 			for err == nil {
 				_, err = watcher.Next(context.Background())
-				w.ch <- struct{}{}
-				log.Println("received event from watcher, sent change message on notifier channel.")
+				select {
+				case w.ch <- struct{}{}:
+					log.Println("received event from watcher, sent change message on notifier channel.")
+				default:
+					log.Println("received event from watcher, not sending message on notifier channel, buffer full and no-one listening.")
+				}
 			}
 
 			if err == context.Canceled {
