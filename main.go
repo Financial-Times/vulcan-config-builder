@@ -2,10 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/coreos/etcd/client"
-	etcderr "github.com/coreos/etcd/error"
-	"golang.org/x/net/context"
-	"golang.org/x/net/proxy"
 	"log"
 	"net/http"
 	"os"
@@ -14,11 +10,19 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"strconv"
+
+	"github.com/coreos/etcd/client"
+	etcderr "github.com/coreos/etcd/error"
+	"golang.org/x/net/context"
+	"golang.org/x/net/proxy"
 )
 
 var (
-	socksProxy = os.Getenv("VCB_SOCK_PROXY")
-	etcdPeers  = os.Getenv("VCB_ETCD_PEERS")
+	socksProxy      = os.Getenv("VCB_SOCK_PROXY")
+	etcdPeers       = os.Getenv("VCB_ETCD_PEERS")
+	cooldownSeconds = os.Getenv("VCB_COOLDOWN_SECONDS")
 
 	addressRegex = regexp.MustCompile(`^[\.\-:\/\w]*:[0-9]{2,5}$`)
 )
@@ -49,11 +53,16 @@ func main() {
 		log.Fatalf("failed to start etcd client: %v\n", err.Error())
 	}
 
+	cooldown := 30
+	if cooldownSeconds != "" {
+		cooldown, err = strconv.Atoi(cooldownSeconds)
+		if err != nil {
+			log.Printf("WARN - The provided cooldownPeriod=%s is invalid, using default value=%v", cooldownSeconds, cooldown)
+		}
+	}
+
 	kapi := client.NewKeysAPI(etcd)
-
-	notifier := newNotifier(kapi, "/ft/services/", socksProxy, peers)
-
-	tick := time.NewTicker(2 * time.Second)
+	notifier := newNotifier(kapi, "/ft/services/")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -61,7 +70,11 @@ func main() {
 	for {
 		s := time.Now()
 		log.Println("rebuilding configuration")
-		applyVulcanConf(kapi, buildVulcanConf(kapi, readServices(kapi)))
+		// since vcb reads all the changes made in etcd, all notifications still in the channel can be ignored.
+		drainChannel(notifier.notify())
+		log.Printf("drained notifications channel")
+
+		applyVulcanConf(kapi, buildVulcanConf(readServices(kapi)))
 		log.Printf("completed reconfiguration. %v\n", time.Now().Sub(s))
 
 		// wait for a change
@@ -72,10 +85,21 @@ func main() {
 		case <-notifier.notify():
 		}
 
-		// throttle
-		<-tick.C
+		log.Printf("change detected, waiting in cooldown period for %v seconds", cooldown)
+		<-time.After(time.Duration(cooldown) * time.Second)
 	}
 
+}
+
+func drainChannel(ch <-chan struct{}) {
+	drain := true
+	for drain {
+		select {
+		case <-ch:
+		default:
+			drain = false
+		}
+	}
 }
 
 type Service struct {
@@ -90,7 +114,9 @@ type Service struct {
 func readServices(kapi client.KeysAPI) []Service {
 	resp, err := kapi.Get(context.Background(), "/ft/services/", &client.GetOptions{Recursive: true})
 	if err != nil {
+		log.Println("error reading etcd keys")
 		if e, _ := err.(client.Error); e.Code == etcderr.EcodeKeyNotFound {
+			log.Println("core key not found")
 			return []Service{}
 		}
 		log.Panicf("failed to read from etcd: %v\n", err.Error())
@@ -100,7 +126,6 @@ func readServices(kapi client.KeysAPI) []Service {
 	}
 
 	var services []Service
-
 	for _, node := range resp.Node.Nodes {
 		if !node.Dir {
 			log.Printf("skipping non-directory %v\n", node.Key)
@@ -172,7 +197,7 @@ type vulcanServer struct {
 	URL string
 }
 
-func buildVulcanConf(kapi client.KeysAPI, services []Service) vulcanConf {
+func buildVulcanConf(services []Service) vulcanConf {
 	vc := vulcanConf{
 		Backends:  make(map[string]vulcanBackend),
 		FrontEnds: make(map[string]vulcanFrontend),
@@ -293,11 +318,13 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
+	changed := false
 	// remove unwanted frontends
 	for k := range existing {
 		if strings.HasPrefix(k, "/vulcand/frontends/vcb-") {
 			_, found := newConf[k]
 			if !found {
+				changed = true
 				log.Printf("deleting frontend %s\n", k)
 				_, err := kapi.Delete(context.Background(), k, &client.DeleteOptions{Recursive: false})
 				if err != nil {
@@ -312,6 +339,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/backends/vcb-") {
 			_, found := newConf[k]
 			if !found {
+				changed = true
 				log.Printf("deleting backend%s\n", k)
 				_, err := kapi.Delete(context.Background(), k, &client.DeleteOptions{Recursive: false})
 				if err != nil {
@@ -326,6 +354,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/backends") {
 			oldVal := existing[k]
 			if v != oldVal {
+				changed = true
 				log.Printf("setting backend %s to %s\n", k, v)
 				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 					log.Printf("error setting %s to %s\n", k, v)
@@ -339,6 +368,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		if strings.HasPrefix(k, "/vulcand/frontends") && !strings.HasSuffix(k, "/middlewares/rewrite") {
 			oldVal := existing[k]
 			if v != oldVal {
+				changed = true
 				log.Printf("setting frontend %s to %s\n", k, v)
 				if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 					log.Printf("error setting %s to %s\n", k, v)
@@ -351,6 +381,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 	for k, v := range newConf {
 		oldVal := existing[k]
 		if v != oldVal {
+			changed = true
 			log.Printf("setting %s to %s\n", k, v)
 			if _, err := kapi.Set(context.Background(), k, v, nil); err != nil {
 				log.Printf("error setting %s to %s\n", k, v)
@@ -358,6 +389,7 @@ func applyVulcanConf(kapi client.KeysAPI, vc vulcanConf) {
 		}
 	}
 
+	log.Printf("changes occured in etcd: %t ", changed)
 	// some cleanup of known possible empty directories
 	cleanFrontends(kapi)
 	cleanBackends(kapi)
@@ -373,7 +405,7 @@ func cleanFrontends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Printf("/vulcand/frontends is not a directory.")
+		log.Println("/vulcand/frontends is not a directory.")
 		return
 	}
 	for _, fe := range resp.Node.Nodes {
@@ -407,7 +439,7 @@ func cleanBackends(kapi client.KeysAPI) {
 		panic(err)
 	}
 	if !resp.Node.Dir {
-		log.Printf("/vulcand/backends is not a directory.")
+		log.Println("/vulcand/backends is not a directory.")
 		return
 	}
 	for _, be := range resp.Node.Nodes {
@@ -471,7 +503,7 @@ func vulcanConfToEtcdKeys(vc vulcanConf) map[string]string {
 	return m
 }
 
-func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers []string) notifier {
+func newNotifier(kapi client.KeysAPI, path string) notifier {
 	w := notifier{make(chan struct{}, 1)}
 
 	go func() {
@@ -485,7 +517,9 @@ func newNotifier(kapi client.KeysAPI, path string, socksProxy string, etcdPeers 
 				_, err = watcher.Next(context.Background())
 				select {
 				case w.ch <- struct{}{}:
+					log.Println("received event from watcher, sent change message on notifier channel.")
 				default:
+					log.Println("received event from watcher, not sending message on notifier channel, buffer full and no-one listening.")
 				}
 			}
 

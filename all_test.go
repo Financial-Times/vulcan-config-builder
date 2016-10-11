@@ -1,11 +1,12 @@
 package main
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/coreos/etcd/client"
 	etcderr "github.com/coreos/etcd/error"
 	"golang.org/x/net/context"
-	"reflect"
-	"testing"
 )
 
 func TestReadServices(t *testing.T) {
@@ -89,13 +90,7 @@ func TestBuildInvalidServerVulcanConfSingleBackend(t *testing.T) {
 		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
 
-	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kapi := client.NewKeysAPI(etcd)
-
-	vc := buildVulcanConf(kapi, []Service{a})
+	vc := buildVulcanConf([]Service{a})
 
 	expected := vulcanConf{
 		Backends: map[string]vulcanBackend{
@@ -179,13 +174,7 @@ func TestBuildVulcanConfSingleBackend(t *testing.T) {
 		FailoverPredicate: "(IsNetworkError() || ResponseCode() == 503 || ResponseCode() == 500) && Attempts() <= 1",
 	}
 
-	etcd, err := client.New(client.Config{Endpoints: []string{"http://localhost:2379"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	kapi := client.NewKeysAPI(etcd)
-
-	vc := buildVulcanConf(kapi, []Service{a})
+	vc := buildVulcanConf([]Service{a})
 
 	expected := vulcanConf{
 		Backends: map[string]vulcanBackend{
