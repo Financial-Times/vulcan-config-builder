@@ -512,9 +512,10 @@ func newNotifier(kapi client.KeysAPI, path string) notifier {
 			watcher := kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
 
 			var err error
-
+			var response *client.Response
 			for err == nil {
-				_, err = watcher.Next(context.Background())
+				response, err = watcher.Next(context.Background())
+				logResponse(response)
 				select {
 				case w.ch <- struct{}{}:
 					log.Println("received event from watcher, sent change message on notifier channel.")
@@ -540,6 +541,13 @@ func newNotifier(kapi client.KeysAPI, path string) notifier {
 	}()
 
 	return w
+}
+
+func logResponse(response *client.Response) {
+	log.Println("Event from watcher:")
+	log.Printf("Action: %s", response.Action)
+	log.Printf("Old key:value  %s:%s ", response.PrevNode.Key, response.PrevNode.Value)
+	log.Printf("New key:value  %s:%s ", response.Node.Key, response.Node.Value)
 }
 
 type notifier struct {
