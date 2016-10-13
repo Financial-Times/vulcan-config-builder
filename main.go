@@ -544,10 +544,17 @@ func newNotifier(kapi client.KeysAPI, path string) notifier {
 }
 
 func logResponse(response *client.Response) {
+	if response == nil {
+		return
+	}
 	log.Println("Event from watcher:")
 	log.Printf("Action: %s\n", response.Action)
-	log.Printf("Old key:value  %s:%s\n", response.PrevNode.Key, response.PrevNode.Value)
-	log.Printf("New key:value  %s:%s\n", response.Node.Key, response.Node.Value)
+	if response.PrevNode != nil {
+		log.Printf("Old key:value  %s:%s\n", response.PrevNode.Key, response.PrevNode.Value)
+	}
+	if response.Node != nil {
+		log.Printf("New key:value  %s:%s\n", response.Node.Key, response.Node.Value)
+	}
 }
 
 type notifier struct {
