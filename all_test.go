@@ -55,7 +55,6 @@ func TestReadServices(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(a, smap["service-a"]) {
-
 		t.Errorf("service does not match. expected and acual are :\n%v\n%v\n", a, smap["service-a"])
 	}
 
