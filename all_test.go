@@ -47,6 +47,7 @@ func TestReadServices(t *testing.T) {
 		Name:           "service-a",
 		HasHealthCheck: true,
 		Addresses:      map[string]string{"srv1": "http://host1:80"},
+		PathHosts:      make(map[string]string),
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
@@ -54,6 +55,7 @@ func TestReadServices(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(a, smap["service-a"]) {
+
 		t.Errorf("service does not match. expected and acual are :\n%v\n%v\n", a, smap["service-a"])
 	}
 
