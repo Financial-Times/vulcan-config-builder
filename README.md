@@ -1,4 +1,4 @@
-# vulcan-config-builder
+# Vulcan Config Builder [![CircleCI](https://circleci.com/gh/Financial-Times/vulcan-config-builder.svg?style=svg)](https://circleci.com/gh/Financial-Times/vulcan-config-builder)
 
 A simple application to interpret FT etcd service configuration and apply our routing policies to it, and setting the corresponding vulcand configuration in etcd.
 

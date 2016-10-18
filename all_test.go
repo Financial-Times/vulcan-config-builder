@@ -47,6 +47,7 @@ func TestReadServices(t *testing.T) {
 		Name:           "service-a",
 		HasHealthCheck: true,
 		Addresses:      map[string]string{"srv1": "http://host1:80"},
+		PathHosts:      make(map[string]string),
 		PathPrefixes: map[string]string{
 			"bananas": "/bananas/.*",
 		},
